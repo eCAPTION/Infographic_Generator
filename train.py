@@ -25,7 +25,7 @@ def main():
     parser.add_argument('--name', type=str, default='',
                         help='experiment name')
     parser.add_argument('--dataset', type=str, default='rico',
-                        choices=['rico', 'publaynet', 'magazine'],
+                        choices=['rico', 'publaynet', 'magazine', 'infographic'],
                         help='dataset name')
     parser.add_argument('--batch_size', type=int, default=64,
                         help='batch size')

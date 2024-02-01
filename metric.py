@@ -14,7 +14,12 @@ from data.util import RelSize, RelLoc, detect_size_relation, detect_loc_relation
 
 class LayoutFID():
     def __init__(self, dataset_name, device='cpu'):
-        num_label = 13 if dataset_name == 'rico' else 5
+        if dataset_name == 'rico':
+            num_label = 13
+        elif dataset_name == 'infographic':
+            num_label = 3
+        else:
+            num_label = 5
         self.model = LayoutNet(num_label).to(device)
 
         # load pre-trained LayoutNet
