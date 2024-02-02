@@ -11,7 +11,7 @@ class LayoutNet(nn.Module):
         d_model = 256
         nhead = 4
         num_layers = 4
-        max_bbox = 50
+        max_bbox = 115
 
         # encoder
         self.emb_label = nn.Embedding(num_label, d_model)

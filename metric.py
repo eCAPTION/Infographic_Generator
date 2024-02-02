@@ -17,7 +17,7 @@ class LayoutFID():
         if dataset_name == 'rico':
             num_label = 13
         elif dataset_name == 'infographic':
-            num_label = 3
+            num_label = 4
         else:
             num_label = 5
         self.model = LayoutNet(num_label).to(device)
