@@ -24,12 +24,10 @@ class Generator(nn.Module):
         l = self.emb_label(label)
         x = torch.cat([z, l], dim=-1)
         x = torch.relu(self.fc_in(x)).permute(1, 0, 2)
-
         x = self.transformer(x, src_key_padding_mask=padding_mask)
 
         x = self.fc_out(x.permute(1, 0, 2))
         x = torch.sigmoid(x)
-
         return x
 
 

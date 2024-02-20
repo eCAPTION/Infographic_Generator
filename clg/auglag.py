@@ -34,7 +34,6 @@ class AugLagMethod():
     def h(self, bbox, data, mask_c):
         B = bbox.size(0)
         canvas = self.bbox_canvas.to(bbox.device)
-
         if len(bbox.size()) == 4:
             P = bbox.size(1)
             canvas = canvas.unsqueeze(0).expand(B, P, -1, -1)
@@ -44,7 +43,6 @@ class AugLagMethod():
             canvas = canvas.expand(B, -1, -1)
             bbox_c = torch.cat([canvas, bbox], dim=1)
             bbox_flatten = bbox_c[mask_c]
-
         return torch.stack([
             const(bbox_flatten, data)
             for const in self.constraints
@@ -139,6 +137,7 @@ class AugLagMethod():
 
             l = l + m * h
             m = self.alpha * m
+            print('ITER VALUE: ', m/2*h_sqr)
             stop = m / 2 * h_sqr < self.tolerance
 
         if self.raise_error and not stop.all():

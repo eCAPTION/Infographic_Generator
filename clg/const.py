@@ -37,16 +37,43 @@ def beautify_non_overlap(bbox_flatten, data, **kwargs):
         mask = mask.unsqueeze(1).expand(-1, P, -1).reshape(-1, N)
 
     cost = compute_overlap(bbox, mask)
-
+    print('COST: ', cost)
     if len(bbox_flatten.size()) == 3:
         cost = cost.view(B, P)
 
     return cost
 
+def beautify_min_size(bbox_flatten, data, min_size=0.05, **kwargs):
+    bbox, mask = to_dense_batch(bbox_flatten, data.batch)
+    bbox, mask = bbox[:, 1:], mask[:, 1:]
+
+    if len(bbox_flatten.size()) == 3:
+        bbox = bbox.transpose(1, 2)
+        B, P, N, D = bbox.size()
+        bbox = bbox.reshape(-1, N, D)
+        mask = mask.unsqueeze(1).expand(-1, P, -1).reshape(-1, N)
+
+    bbox = bbox.permute(2, 0, 1)
+    xc, yc, w, h = bbox
+    areas = w * h
+    
+    # mask the zero values
+    masked_areas = torch.where(areas == 0, torch.tensor(float(1)).cuda(), areas)
+    # print('AREAS: ', masked_areas)
+    min_areas, _ = torch.min(masked_areas, dim=1)
+    # print('MIN AREAS: ', min_areas)
+    # cost is max(min_area_allowed - min_area of bbox, 0)
+    cost = min_size - min_areas
+    cost = torch.nn.functional.relu(min_areas)
+    # print('COST: ', cost)
+    if len(bbox_flatten.size()) == 3:
+        cost = cost.view(B, P)
+    return cost
 
 beautify = [
-    beautify_alignment,
-    beautify_non_overlap
+    # beautify_alignment,
+    # beautify_non_overlap,
+    beautify_min_size
 ]
 
 

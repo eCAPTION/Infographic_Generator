@@ -135,8 +135,11 @@ def main():
     results, violation = [], []
     for data in tqdm(dataloader, ncols=100):
         data = data.to(device)
+        # print('Label BATCH: ', data.y.size())
+        # print('DATA Batch: ', data.batch)
         label_c, mask_c = to_dense_batch(data.y, data.batch)
         label = torch.relu(label_c[:, 1:] - 1)
+        # print('LABELS: ', label.size())
         mask = mask_c[:, 1:]
         padding_mask = ~mask
 

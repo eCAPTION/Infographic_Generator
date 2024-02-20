@@ -49,7 +49,7 @@ class Infographic(BaseDataset):
 
             boxes = torch.tensor(boxes, dtype=torch.float)
             labels = torch.tensor(labels, dtype=torch.long)
-
+            print('BOX SIZES: ', boxes.size())
             data = Data(x=boxes, y=labels)
             data.attr = {
                 'name': json_path.name,
@@ -64,7 +64,7 @@ class Infographic(BaseDataset):
         generator = torch.Generator().manual_seed(0)
         indices = torch.randperm(len(data_list), generator=generator)
         data_list = [data_list[i] for i in indices]
-
+        print(data_list)
         # train 85% / val 5% / test 10%
         N = len(data_list)
         s = [int(N * .85), int(N * .90)]
