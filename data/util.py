@@ -144,7 +144,7 @@ class AddCanvasElement():
             data.attr['has_canvas_element'] = True
         return data
 
-
+# randomly add relational constraints
 class AddRelation():
     def __init__(self, seed=None, ratio=0.1):
         self.ratio = ratio
@@ -153,15 +153,22 @@ class AddRelation():
             self.generator.seed(seed)
 
     def __call__(self, data):
+        # N = number of boxes in layout
         N = data.x.size(0)
+        # print(data.x.size())
+        # print('=' * 20)
+        # print(N)
         has_canvas = data.attr['has_canvas_element']
 
-        rel_all = list(product(range(2), combinations(range(N), 2)))
-        size = int(len(rel_all) * self.ratio)
+        rel_all = list(product(range(2), combinations(range(N), 2))) # get all possible pairs of boxes
+        size = int(len(rel_all) * self.ratio) # randomly choose self.ratio of boxes with relations
         rel_sample = set(self.generator.sample(rel_all, size))
-
+        # the pairs of element indices with relational constraints
+        # SAMPLE:  {(0, (0, 3)), (1, (4, 5)), (0, (2, 4)), (0, (0, 4))} 
+        # take (0, (0, 3)) -> (0, 3) are the element indices, 0 means size relation, 1 means location relation
         edge_index, edge_attr = [], []
         rel_unk = 1 << RelSize.UNKNOWN | 1 << RelLoc.UNKNOWN
+        
         for i, j in combinations(range(N), 2):
             bi, bj = data.x[i], data.x[j]
             canvas = data.y[i] == 0 and has_canvas
@@ -176,11 +183,15 @@ class AddRelation():
             else:
                 rel_loc = 1 << RelLoc.UNKNOWN
 
-            rel = rel_size | rel_loc
+            rel = rel_size | rel_loc # addition of rel_size and rel_loc
+
             if rel != rel_unk:
                 edge_index.append((i, j))
                 edge_attr.append(rel)
-
+                # print((i, j))
+                # print(rel_size)
+                # print(rel_loc)
+                # print('-' * 20)
         data.edge_index = torch.as_tensor(edge_index).long()
         data.edge_index = data.edge_index.t().contiguous()
         data.edge_attr = torch.as_tensor(edge_attr).long()

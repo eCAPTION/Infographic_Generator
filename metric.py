@@ -192,6 +192,30 @@ def compute_alignment(bbox, mask):
 
     return X.sum(-1) / mask.float().sum(-1)
 
+def get_relations(bbox_flatten, data):
+    device = data.x.device
+    failures, valid = [], []
+    _zip = zip(data.edge_attr, data.edge_index.t())
+    relations = []
+    for gt, (i, j) in _zip:
+        failure, _valid = 0, 0
+        b1, b2 = bbox_flatten[i], bbox_flatten[j]
+        has_relation, pred_size, pred_loc = False, None, None
+
+        # size relation
+        if ~gt & 1 << RelSize.UNKNOWN:
+            has_relation = True
+            pred_size = detect_size_relation(b1, b2)
+
+        # loc relation
+        if ~gt & 1 << RelLoc.UNKNOWN:
+            has_relation = True
+            canvas = data.y[i].eq(0)
+            pred_loc = detect_loc_relation(b1, b2, canvas)
+            
+        if has_relation:
+            relations.append((i.item(), j.item(), pred_size, pred_loc))
+    return relations
 
 def compute_violation(bbox_flatten, data):
     device = data.x.device
@@ -201,7 +225,6 @@ def compute_violation(bbox_flatten, data):
     for gt, (i, j) in _zip:
         failure, _valid = 0, 0
         b1, b2 = bbox_flatten[i], bbox_flatten[j]
-
         # size relation
         if ~gt & 1 << RelSize.UNKNOWN:
             pred = detect_size_relation(b1, b2)

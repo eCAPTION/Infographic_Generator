@@ -21,7 +21,7 @@ from model.layoutganpp import Generator, Discriminator
 import clg.const
 from clg.auglag import AugLagMethod
 from clg.optim import AdamOptimizer, CMAESOptimizer
-from metric import compute_violation
+from metric import compute_violation, get_relations
 
 
 def save_gif(out_path, j, netG,
@@ -103,11 +103,13 @@ def main():
     # load test dataset
     dataset = get_dataset(train_args['dataset'], 'test',
                           T.Compose(transforms))
+
     dataloader = DataLoader(dataset,
                             batch_size=args.batch_size,
                             num_workers=4,
                             pin_memory=True,
                             shuffle=False)
+    
     num_label = dataset.num_classes
 
     # setup model and load state
@@ -133,13 +135,12 @@ def main():
     optimizer = AugLagMethod(netG, netD, inner_optimizer, constraints)
 
     results, violation = [], []
+
     for data in tqdm(dataloader, ncols=100):
         data = data.to(device)
-        # print('Label BATCH: ', data.y.size())
-        # print('DATA Batch: ', data.batch)
+
         label_c, mask_c = to_dense_batch(data.y, data.batch)
         label = torch.relu(label_c[:, 1:] - 1)
-        # print('LABELS: ', label.size())
         mask = mask_c[:, 1:]
         padding_mask = ~mask
 
@@ -151,7 +152,6 @@ def main():
         for z in optimizer.generator(z, data):
             if len(results) < args.num_save:
                 z_hist.append(z)
-
         bbox = netG(z, label, padding_mask)
 
         if args.const_type == 'relation':
@@ -159,6 +159,8 @@ def main():
             canvas = canvas.expand(bbox.size(0), -1, -1)
             bbox_flatten = torch.cat([canvas, bbox], dim=1)[mask_c]
             v = compute_violation(bbox_flatten, data)
+            relations = get_relations(bbox_flatten, data)
+            print('\nRELATIONS: ', relations)
             violation += v[~v.isnan()].tolist()
 
         if len(results) < args.num_save:
@@ -168,6 +170,7 @@ def main():
             mask_j = mask[j]
             b = bbox[j][mask_j].cpu().numpy()
             l = label[j][mask_j].cpu().numpy()
+
 
             if len(results) < args.num_save:
                 out_path = out_dir / f'initial_{len(results)}.png'

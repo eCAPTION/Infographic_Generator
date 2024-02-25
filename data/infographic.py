@@ -64,7 +64,6 @@ class Infographic(BaseDataset):
         generator = torch.Generator().manual_seed(0)
         indices = torch.randperm(len(data_list), generator=generator)
         data_list = [data_list[i] for i in indices]
-        print(data_list)
         # train 85% / val 5% / test 10%
         N = len(data_list)
         s = [int(N * .85), int(N * .90)]

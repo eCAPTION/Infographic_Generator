@@ -75,6 +75,7 @@ def convert_layout_to_image(boxes, labels, colors, canvas_size):
         draw.rectangle([x1, y1, x2, y2],
                        outline=color,
                        fill=c_fill)
+        draw.text(((x1+x2)/2, (y1+y2)/2), str(i + 1), fill=(0,0,0), anchor='mm')
     return img
 
 

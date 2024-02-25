@@ -4,7 +4,7 @@ from torch_geometric.utils import to_dense_batch
 
 class AugLagMethod():
     def __init__(self, netG, netD, inner_optimizer, constraints,
-                 alpha=3., l0=0., m0=1., iteration=5, tolerance=1e-8,
+                 alpha=3., l0=0., m0=1., iteration=10, tolerance=1e-8,
                  clamp_f=True, raise_error_if_failed=False):
         self.netG = netG
         self.netD = netD
@@ -43,6 +43,7 @@ class AugLagMethod():
             canvas = canvas.expand(B, -1, -1)
             bbox_c = torch.cat([canvas, bbox], dim=1)
             bbox_flatten = bbox_c[mask_c]
+
         return torch.stack([
             const(bbox_flatten, data)
             for const in self.constraints
@@ -137,7 +138,8 @@ class AugLagMethod():
 
             l = l + m * h
             m = self.alpha * m
-            print('ITER VALUE: ', m/2*h_sqr)
+
+
             stop = m / 2 * h_sqr < self.tolerance
 
         if self.raise_error and not stop.all():
