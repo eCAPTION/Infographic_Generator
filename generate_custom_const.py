@@ -7,10 +7,12 @@ import tempfile
 import subprocess
 from tqdm import tqdm
 from pathlib import Path
+import seaborn as sns
 
 import torch
 import torchvision.transforms as T
-from torch_geometric.data import DataLoader
+
+from torch_geometric.data import DataLoader, InMemoryDataset, Data
 from torch_geometric.utils import to_dense_batch
 
 from data import get_dataset
@@ -22,7 +24,6 @@ import clg.const
 from clg.auglag import AugLagMethod
 from clg.optim import AdamOptimizer, CMAESOptimizer
 from metric import compute_violation, get_relations
-
 
 def save_gif(out_path, j, netG,
              z_hist, label, mask, padding_mask,
@@ -52,6 +53,10 @@ def save_gif(out_path, j, netG,
         subprocess.run(['convert', '-delay', '50',
                         tempdir + f'/{j}_*.png', str(out_path)])
 
+def get_colors(num_classes):
+    n_colors = num_classes
+    colors = sns.color_palette('husl', n_colors=n_colors)
+    return [tuple(map(lambda x: int(x * 255), c)) for c in colors]
 
 def main():
     parser = argparse.ArgumentParser(
@@ -59,13 +64,11 @@ def main():
     )
 
     parser.add_argument('ckpt_path', type=str, help='checkpoint path')
-    parser.add_argument('--batch_size', type=int, default=32,
-                        help='batch size')
+    parser.add_argument('--label', type=int, nargs='+',
+                        help='label')
     parser.add_argument('-o', '--out_path', type=str,
                         default='output/generated_layouts.pkl',
                         help='output pickle path')
-    parser.add_argument('--num_save', type=int, default=0,
-                        help='number of layouts to save as images')
     parser.add_argument('--seed', type=int, help='manual seed')
 
     # CLG specific options
@@ -100,17 +103,30 @@ def main():
     else:
         constraints = clg.const.beautify
 
-    # load test dataset
-    dataset = get_dataset(train_args['dataset'], 'test',
-                          T.Compose(transforms))
-
-    dataloader = DataLoader(dataset,
-                            batch_size=args.batch_size,
-                            num_workers=4,
-                            pin_memory=True,
-                            shuffle=False)
     
-    num_label = dataset.num_classes
+    label = list(args.label)
+    label = torch.tensor(label)
+
+    num_label = 5
+    mask = torch.full(label.size(), True).to(device)
+    mask = mask[None, :] #expand dims
+    padding_mask = ~mask
+
+    y = label
+    x = torch.full((y.size(0), 4), 0.0) # placeholder boxes with coords 0
+    
+    attr = {'has_canvas_element': False, 'filtered': False}
+    
+    data = Data(x=x, y=y, attr=attr)
+
+    for t in transforms:
+        t(data)
+    data.batch = torch.full(data.y.size(), 0)
+    data.attr = [data.attr.copy()]
+
+    data.y = data.y.to(device)
+    data.x = data.x.to(device)
+    data.batch = data.batch.to(device)
 
     # setup model and load state
     netG = Generator(train_args['latent_size'], num_label,
@@ -135,61 +151,53 @@ def main():
     optimizer = AugLagMethod(netG, netD, inner_optimizer, constraints)
 
     results, violation = [], []
+    label = label[None, :].to(device) # expand label dims
 
-    for data in tqdm(dataloader, ncols=100):
-        data = data.to(device)
-        label_c, mask_c = to_dense_batch(data.y, data.batch)
-        label = torch.relu(label_c[:, 1:] - 1)
-        mask = mask_c[:, 1:]
-        padding_mask = ~mask
+    z = torch.randn(label.size(0), label.size(1),
+                    train_args['latent_size'],
+                    device=device)
 
-        z = torch.randn(label.size(0), label.size(1),
-                        train_args['latent_size'],
-                        device=device)
+    z_hist = [z]
+    for z in optimizer.generator(z, data):
+        if len(results) < 1:
+            z_hist.append(z)
 
-        z_hist = [z]
-        for z in optimizer.generator(z, data):
-            if len(results) < args.num_save:
-                z_hist.append(z)
+    bbox = netG(z, label, padding_mask)
 
-        bbox = netG(z, label, padding_mask)
+    if args.const_type == 'relation':
+        canvas = optimizer.bbox_canvas.to(bbox)
+        canvas = canvas.expand(bbox.size(0), -1, -1)
+        bbox_flatten = torch.cat([canvas, bbox], dim=1)[mask_c]
+        v = compute_violation(bbox_flatten, data)
+        relations = get_relations(bbox_flatten, data)
+        print('\nRELATIONS: ', relations)
+        violation += v[~v.isnan()].tolist()
 
-        if args.const_type == 'relation':
-            canvas = optimizer.bbox_canvas.to(bbox)
-            canvas = canvas.expand(bbox.size(0), -1, -1)
-            bbox_flatten = torch.cat([canvas, bbox], dim=1)[mask_c]
-            v = compute_violation(bbox_flatten, data)
-            relations = get_relations(bbox_flatten, data)
-            # print('\nRELATIONS: ', relations)
-            violation += v[~v.isnan()].tolist()
+    bbox_init = netG(z_hist[0], label, padding_mask)
+    print(bbox.size())
+    colors = get_colors(num_label)
+    for j in range(bbox.size(0)):
+        mask_j = mask[j]
+        b = bbox[j][mask_j].cpu().numpy()
+        l = label[j][mask_j].cpu().numpy()
 
-        if len(results) < args.num_save:
-            bbox_init = netG(z_hist[0], label, padding_mask)
+        out_path = out_dir / f'initial_{len(results)}.png'
+        convert_layout_to_image(
+            bbox_init[j][mask_j].cpu().numpy(),
+            l, colors, (120, 80)
+        ).save(out_path)
 
-        for j in range(bbox.size(0)):
-            mask_j = mask[j]
-            b = bbox[j][mask_j].cpu().numpy()
-            l = label[j][mask_j].cpu().numpy()
+        out_path = out_dir / f'optimized_{len(results)}.png'
+        convert_layout_to_image(
+            b, l, colors, (120, 80)
+        ).save(out_path)
 
+        out_path = out_dir / f'optimizing_{len(results)}.gif'
+        save_gif(out_path, j, netG,
+                    z_hist, label, mask, padding_mask,
+                    colors, (120, 80))
 
-            if len(results) < args.num_save:
-                out_path = out_dir / f'initial_{len(results)}.png'
-                convert_layout_to_image(
-                    bbox_init[j][mask_j].cpu().numpy(),
-                    l, dataset.colors, (120, 80)
-                ).save(out_path)
-
-                out_path = out_dir / f'optimized_{len(results)}.png'
-                convert_layout_to_image(
-                    b, l, dataset.colors, (120, 80)
-                ).save(out_path)
-
-                out_path = out_dir / f'optimizing_{len(results)}.gif'
-                save_gif(out_path, j, netG,
-                         z_hist, label, mask, padding_mask,
-                         dataset.colors, (120, 80))
-
-            results.append((b, l))
+        results.append((b, l))
 
     if args.const_type == 'relation':
         violation = sum(violation) / len(violation)
@@ -202,4 +210,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main()            

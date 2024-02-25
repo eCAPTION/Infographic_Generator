@@ -102,7 +102,6 @@ class AugLagMethod():
         label = torch.relu(label_c[:, 1:] - 1)
         mask = mask_c[:, 1:]
         padding_mask = ~mask
-
         bbox = self.netG(z, label, padding_mask)
 
         if self.clamp_f:
