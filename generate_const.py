@@ -159,7 +159,7 @@ def main():
             canvas = canvas.expand(bbox.size(0), -1, -1)
             bbox_flatten = torch.cat([canvas, bbox], dim=1)[mask_c]
             v = compute_violation(bbox_flatten, data)
-            relations = get_relations(bbox_flatten, data)
+            # relations = get_relations(bbox_flatten, data)
             # print('\nRELATIONS: ', relations)
             violation += v[~v.isnan()].tolist()
 

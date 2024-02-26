@@ -188,12 +188,34 @@ class AddRelation():
             if rel != rel_unk:
                 edge_index.append((i, j))
                 edge_attr.append(rel)
-                # print((i, j))
-                # print(rel_size)
-                # print(rel_loc)
-                # print('-' * 20)
+
         data.edge_index = torch.as_tensor(edge_index).long()
         data.edge_index = data.edge_index.t().contiguous()
         data.edge_attr = torch.as_tensor(edge_attr).long()
+        return data
 
+class AddCustomRelation():
+    '''
+    box id_b has relation over box id_a (e.g. box id_b is smaller than box id_a)
+    '''
+    def __init__(self, id_a, id_b, relation): 
+        self.str_to_loc_relations = {'unknown': RelLoc.UNKNOWN, 'left': RelLoc.LEFT, 'top': RelLoc.TOP, 'right': RelLoc.RIGHT, 'bottom': RelLoc.BOTTOM, 'center': RelLoc.CENTER}
+        self.str_to_size_relations = {'unknown': RelSize.UNKNOWN, 'small': RelSize.SMALLER, 'equal': RelSize.EQUAL, 'larger': RelSize.LARGER}
+        self.id_a = id_a
+        self.id_b = id_b
+        self.relation = relation
+
+    def __call__(self, data):
+        print(data.x)
+        rel_loc = 1 << self.str_to_loc_relations.get(self.relation, RelLoc.UNKNOWN)
+        rel_size = 1 << self.str_to_size_relations.get(self.relation, RelLoc.UNKNOWN)
+        edge_index, edge_attr = [], []
+        rel_unk = 1 << RelSize.UNKNOWN | 1 << RelLoc.UNKNOWN
+        rel = rel_size | rel_loc
+        if rel != rel_unk:
+            edge_index.append((self.id_a, self.id_b))
+            edge_attr.append(rel)
+        data.edge_index = torch.as_tensor(edge_index).long()
+        data.edge_index = data.edge_index.t().contiguous()
+        data.edge_attr = torch.as_tensor(edge_attr).long()
         return data

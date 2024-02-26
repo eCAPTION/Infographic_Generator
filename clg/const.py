@@ -88,6 +88,7 @@ def less(a, b, eps=1e-8):
 def _relation_size(rel_value, cost_func, bbox_flatten, data, canvas):
     cond = data.y[data.edge_index[0]].eq(0).eq(canvas)
     cond &= (data.edge_attr & 1 << rel_value).ne(0)
+    
 
     if len(bbox_flatten.size()) == 3:
         cond = cond.unsqueeze(-1)
