@@ -1,15 +1,83 @@
-from generate_custom_const import generate_bbox_beautify, generate_bbox_relation
-from util import set_seed, convert_layout_to_image
-import seaborn as sns
+import os
+import sys
+import traceback
+from joblib import load
 
-def get_colors(num_classes):
-    n_colors = num_classes
-    colors = sns.color_palette('husl', n_colors=n_colors)
-    return [tuple(map(lambda x: int(x * 255), c)) for c in colors]
+import uvicorn
+from fastapi import FastAPI, Request, status
+from fastapi.logger import logger
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-(bbox, label) = generate_bbox_beautify('pretrained/layoutganpp_magazine.pth.tar', [0,0,1,1,2], 5)
-out_path = 'output/beautify/optimized_0.png'
-convert_layout_to_image(bbox, label, get_colors(5), (120, 80)).save(out_path)
-(bbox2, label2) = generate_bbox_relation('pretrained/layoutganpp_magazine.pth.tar', 4, 3, 'top', bbox, label, 5)
-out_path_2 = 'output/beautify/optimized_0_rel.png'
-convert_layout_to_image(bbox2, label2, get_colors(5), (120, 80)).save(out_path_2)
+import torch
+
+from schema import *
+from generate_custom_const import *
+from exception_handler import validation_exception_handler, python_exception_handler
+
+PRETRAINED_PTH = 'pretrained/layoutganpp_magazine.pth.tar'
+
+app = FastAPI(
+    title='Infographic Generator',
+    description='generates and apply constraints on infographics'
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = ['*'],
+    allow_methods = ['*'],
+    allow_headers = ['*']
+)
+
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, python_exception_handler)
+
+@app.post('/generate', 
+    response_model=ModelResponse,
+    responses={422: {'model': ErrorResponse}, 500: {'model': ErrorResponse}}
+    )
+def do_generate(request: Request, body: GenerateInput):
+    # generate given some input labels
+    logger.info('generate API called')
+
+    (bbox, label) = generate_bbox_beautify(PRETRAINED_PTH, body.label, body.num_label)
+
+    logger.info('boxes successfully generated')
+
+    results = {
+        'bbox': bbox,
+        'label': label
+    }
+
+    return {
+        'error': False,
+        'results': results
+    }
+
+@app.post('/edit',
+    response_model=ModelResponse,
+    responses={422: {'model': ErrorResponse}, 500: {'model': ErrorResponse}}
+    )
+def do_edit(request: Request, body: EditInput):
+    # generate given some input labels
+    logger.info('generate API called')
+
+    (bbox, label) = generate_bbox_relation(PRETRAINED_PTH, body.id_a, body.id_b, body.relation, body.bbox, body.label, body.num_label)
+
+    logger.info('boxes successfully generated')
+
+    results = {
+        'bbox': bbox,
+        'label': label
+    }
+
+    return {
+        'error': False,
+        'results': results
+    }
+
+if __name__ == '__main__':
+    uvicorn.run('main:app', host='127.0.01', port=8080, reload=True)
