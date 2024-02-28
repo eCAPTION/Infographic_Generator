@@ -1,22 +1,28 @@
-FROM python:3.8
+# Use the official Ubuntu 18.04 image as base
+FROM ubuntu:18.04
 
-RUN apt-get update && \
-    apt-get install -y \
-        git \
-        python3-pip \
-        python3-dev \
-        libglib2.0-0
+RUN apt-get update
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get install -y python3.8 python3-pip
+# Update symlink to point to latest
+RUN rm /usr/bin/python3 && ln -s /usr/bin/python3.8 /usr/bin/python3
+RUN python3 --version
+RUN pip3 --version
 
-RUN sudo git clone https://github.com/zhuoyang125/const_layout.git
+# install git
+RUN apt-get install -y git
+
+RUN git clone https://github.com/zhuoyang125/const_layout.git
 RUN cd const_layout
 
 # install dependencies
 # pytorch 1.8.1
-RUN pip install torch==1.8.1+cpu torchvision==0.9.1+cpu torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+RUN python3 -m pip install torch==1.8.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
 # pytorch geometric 1.7.2
-RUN pip install torch-geometric==1.7.2
+RUN python3 -m pip install torch-geometric==1.7.2
 
-RUN pip install -r requirements.txt
+RUN python3 -m pip install -r requirements.txt
 
 # download models
 RUN ./download_model.sh
