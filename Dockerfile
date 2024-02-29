@@ -1,28 +1,30 @@
 # Use the official Ubuntu 18.04 image as base
-FROM ubuntu:18.04
+FROM pytorch/pytorch:1.8.1-cuda11.1-cudnn8-runtime
 
-RUN apt-get update
-RUN apt-get install -y software-properties-common
-RUN add-apt-repository ppa:deadsnakes/ppa
-RUN apt-get install -y python3.8 python3-pip
-# Update symlink to point to latest
-RUN rm /usr/bin/python3 && ln -s /usr/bin/python3.8 /usr/bin/python3
-RUN python3 --version
-RUN pip3 --version
 
 # install git
-RUN apt-get install -y git
+RUN apt-get -qq -y update && \
+    apt-get -qq -y upgrade && \
+    apt-get install -y git wget
 
-RUN git clone https://github.com/zhuoyang125/const_layout.git
-RUN cd const_layout
+RUN git clone https://github.com/zhuoyang125/const_layout.git 
+WORKDIR ./const_layout/
 
 # install dependencies
-# pytorch 1.8.1
-RUN python3 -m pip install torch==1.8.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+RUN python3 -m pip install torch-scatter==2.0.7 -f https://data.pyg.org/whl/torch-1.8.1+cu111.html
+RUN python3 -m pip install torch-sparse==0.6.10 -f https://data.pyg.org/whl/torch-1.8.1+cu111.html
 # pytorch geometric 1.7.2
 RUN python3 -m pip install torch-geometric==1.7.2
+
+# copy data files (requirement, model, dataset)
 
 RUN python3 -m pip install -r requirements.txt
 
 # download models
+RUN chmod +x download_model.sh
 RUN ./download_model.sh
+
+# run the app
+RUN chmod +x start.sh
+EXPOSE 80
+CMD ["./start.sh"]
