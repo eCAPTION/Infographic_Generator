@@ -4,3 +4,8 @@ pycocotools
 tensorboard
 pytorch-fid
 cma
+fastapi
+pydantic
+typing
+uvicorn
+gunicorn
