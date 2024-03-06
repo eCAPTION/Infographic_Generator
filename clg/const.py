@@ -56,7 +56,8 @@ def beautify_min_size(bbox_flatten, data, min_size=0.07, **kwargs):
     xc, yc, w, h = bbox
     areas = w * h
     # mask the zero values to change them to 1
-    masked_areas = torch.where(areas == 0, torch.tensor(float(1)).cuda(), areas)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    masked_areas = torch.where(areas == 0, torch.tensor(float(1)).to(device), areas)
     # print('AREAS: ', masked_areas)
     min_areas, _ = torch.min(masked_areas, dim=1)
 
