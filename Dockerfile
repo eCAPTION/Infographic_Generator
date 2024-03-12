@@ -1,5 +1,4 @@
-# Use the official Ubuntu 18.04 image as base
-FROM python:3.8.10
+FROM pytorch/pytorch:1.8.1-cuda11.1-cudnn8-runtime
 
 
 # install git
@@ -11,9 +10,8 @@ RUN git clone https://github.com/zhuoyang125/const_layout.git
 WORKDIR ./const_layout/
 
 # install dependencies
-RUN python3 -m pip install torch==1.8.1+cpu torchvision==0.9.1+cpu torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
-RUN python3 -m pip install torch-scatter==2.0.7 -f https://data.pyg.org/whl/torch-1.8.1+cpu.html
-RUN python3 -m pip install torch-sparse==0.6.10 -f https://data.pyg.org/whl/torch-1.8.1+cpu.html
+RUN python3 -m pip install torch-scatter==2.0.7 -f https://data.pyg.org/whl/torch-1.8.1+cu111.html
+RUN python3 -m pip install torch-sparse==0.6.10 -f https://data.pyg.org/whl/torch-1.8.1+cu111.html
 # pytorch geometric 1.7.2
 RUN python3 -m pip install torch-geometric==1.7.2
 
