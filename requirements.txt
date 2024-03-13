@@ -9,3 +9,6 @@ pydantic
 typing
 uvicorn
 gunicorn
+kafka-python
+python-dotenv
+git+https://github.com/eCAPTION/ecaption_utils.git#egg=ecaption_utils
