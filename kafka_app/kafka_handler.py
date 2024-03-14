@@ -1,5 +1,7 @@
 import os
+import copy
 import json
+import requests
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from PIL import Image
@@ -14,7 +16,7 @@ from util import *
 metadata for each infographic
 {
 label: list[int],
-input_dict: dict[int, list[tuple(str, str)]] (component_name, content)
+present_sections: list[str],
 bbox: list[list[int]],
 request_id: int,
 title: str,
@@ -29,7 +31,7 @@ entity_labels = dict[int, str]
 
 # Constants
 NUM_LABEL = 5
-CANVAS_HEIGHT, CANVAS_WIDTH = 297, 210
+CANVAS_HEIGHT, CANVAS_WIDTH = 594, 420
 GENERATION_ENDPOINT = 'https://infographic-generator-106858723129.herokuapp.com'
 INFOGRAPHIC_URL = 'https://generated-infographics.s3.ap-southeast-1.amazonaws.com'
 BUCKET_NAME = 'generated-infographics'
@@ -53,7 +55,7 @@ broker_url = os.environ.get("KAFKA_BROKER_URL")
 port = os.environ.get("GATEWAY_SERVICE_PORT")
 bootstrap_server = os.environ.get("BOOTSTRAP_SERVER")
 
-app = get_faust_app(FaustApplication.Chatbot, broker_url=broker_url, port=port)
+app = get_faust_app(FaustApplication.InfographicGeneration, broker_url=broker_url, port=port)
 topics = initialize_topics(app, [Topic.NEWS_SEARCH_RESULTS, Topic.ADD_INSTRUCTION, Topic.DELETE_INSTRUCTION, Topic.NEW_INFOGRAPHIC, Topic.MODIFIED_INFOGRAPHIC])
 
 handle_error = get_error_handler(app)
@@ -65,27 +67,31 @@ async def handle_infographic_generation(event_stream):
         title = event.title
         desc = event.description
         related_articles = event.related_articles
-        texts = [('title', title), ('description', desc), ('related_articles', related_articles)]
+        texts = [('title', title), ('description', desc)]
+        for article in related_articles:
+            texts.append(('related_articles', article))
 
         img_url = event.image
-        im = Image.open(img_url)
+        res = requests.get(img_url)
+        im = Image.open(BytesIO(res.content))
         imgs = [('image', im)]
 
         # knowledge subgraph information
-        adj_list = event.adjList
-        node_occurences = event.node_occurences # node "importance" values
-        entity_labels = event.entity_labels
+        adj_list = convert_keys_str_to_int(event.adjlist)
+        node_occurrences = convert_keys_str_to_int(event.node_occurrences) # node "importance" values
+        entity_labels = convert_keys_str_to_int(event.entity_labels)
 
-        graph_im = convert_graph_to_image(adj_list, node_occurences, entity_labels) # im is a Pillow Image object
+        graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
         graphs = [('knowledge_graph', graph_im)]
 
         # do the infographic generation here to obtain img url
         label = []
         input_dict = {0: texts, 1: imgs, 2: graphs}
+        present_sections = [k for k in component_label_mapping.keys()]
         for k in input_dict:
             for _ in range(len(input_dict[k])):
                 label.append(k)
-
+        print('Getting infographic layout...')
         try:
             gen_bbox, gen_label = get_generation_from_api(NUM_LABEL, label)
         except Exception as e:
@@ -100,7 +106,7 @@ async def handle_infographic_generation(event_stream):
         layout_dict = event_to_dict(event) 
         layout_dict['bbox'] = gen_bbox
         layout_dict['label'] = gen_label
-        layout_dict['input_dict'] = input_dict
+        layout_dict['present_sections'] = present_sections
         infographic_img = convert_layout_to_infographic(input_dict, gen_bbox, gen_label, (CANVAS_HEIGHT, CANVAS_WIDTH))
         
         # save image and layout data to stream
@@ -111,6 +117,7 @@ async def handle_infographic_generation(event_stream):
         json_layout_bytes = BytesIO(json_layout_data.encode('utf-8'))
         
         # upload stream to s3 bucket
+        print('Uploading infographic...')
         img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
         json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):
@@ -124,7 +131,8 @@ async def handle_infographic_generation(event_stream):
         url = INFOGRAPHIC_URL + '/' + str(request_id)
         topic = Topic.NEW_INFOGRAPHIC
         Event = get_event_type(topic)
-        await topics[topic].send(infographic_link=url, request_id=str(request_id))
+        event = Event(infographic_link=url, request_id=str(request_id))
+        await topics[topic].send(value=event)
 
 @app.agent(topics[Topic.DELETE_INSTRUCTION])
 async def handle_delete_instruction(event_stream):
@@ -143,21 +151,16 @@ async def handle_delete_instruction(event_stream):
         downloaded_json_data = json_file_in_mem.read()
         layout_dict = json.loads(downloaded_json_data)
         label = layout_dict['label'] 
-        input_dict = {}
-        for k in layout_dict['input_dict']:
-            input_dict[int(k)] = layout_dict['input_dict'][k]
+        present_sections = layout_dict['present_sections']
 
         # remove infographic section from input dict
-        label_of_delete_section = component_label_mapping[infographic_section]
-        tup_dict = dict(input_dict[label_of_delete_section])
-        tup_dict.pop(infographic_section)
-        input_dict[label_of_delete_section] = list(tuple(tup_dict.items()))
+        present_sections.remove(infographic_section)
 
         # update label after removing section
         label = []
-        for k in layout_dict:
-            for _ in input_dict[k]:
-                label.append(k)
+        for k in component_label_mapping.keys():
+            if k in present_sections:
+                label.append(component_label_mapping[k])
 
 
         # get new layout
@@ -174,7 +177,7 @@ async def handle_delete_instruction(event_stream):
         infographic_img = convert_layout_to_infographic(input_dict, gen_bbox, gen_label, (CANVAS_HEIGHT, CANVAS_WIDTH))
         # update layout dict
         layout_dict['label'] = label
-        layout_dict['input_dict'] = input_dict
+        layout_dict['present_sections'] = present_sections
         layout_dict['bbox'] = gen_bbox
 
         # save image data to stream
@@ -197,7 +200,8 @@ async def handle_delete_instruction(event_stream):
         url = INFOGRAPHIC_URL + '/' + str(request_id)
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
-        await topics[topic].send(infographic_link=url, request_id=str(request_id))
+        event = Event(new_infographic_link=url, request_id=str(request_id))
+        await topics[topic].send(value=event)
 
         
 @app.agent(topics[Topic.ADD_INSTRUCTION])
@@ -218,31 +222,25 @@ async def handle_add_instruction(event_stream):
 
         downloaded_json_data = json_file_in_mem.read()
         layout_dict = json.loads(downloaded_json_data)
-        input_dict = {}
-        for k in layout_dict['input_dict']:
-            input_dict[int(k)] = layout_dict['input_dict'][k]
-        
+        present_sections = layout_dict['present_sections']
         
         # check if target element already exists
-        target_element_exists = False
-        for k in input_dict:
-            for v in input_dict[k]:
-                if v[0] == target_element:
-                    target_element_exists = True
-        if target_element_exists:
+        if target_element in present_sections:
             await handle_error(
                 event.request_id,
                 error_type=FaustApplication.InfographicGeneration,
                 error_message='Target element already exists'
             )
         
-        target_element_label = component_label_mapping[target_element]
-        input_dict[target_element_label].append((target_element, layout_dict[target_element]))
+        for i in range(len(present_sections)):
+            if list(component_label_mapping.keys()).index(present_sections[i]) >= list(component_label_mapping.keys()).index(target_element):
+                present_sections.insert(i-1, target_element)
+                break
         # update label after adding target element
         label = []
-        for k in layout_dict:
-            for _ in input_dict[k]:
-                label.append(k)
+        for k in component_label_mapping.keys():
+            if k in present_sections:
+                label.append(component_label_mapping[k])
         # get new layout
         try:
             gen_bbox, gen_label = get_generation_from_api(NUM_LABEL, label)
@@ -257,7 +255,7 @@ async def handle_add_instruction(event_stream):
         infographic_img = convert_layout_to_infographic(input_dict, gen_bbox, gen_label, (CANVAS_HEIGHT, CANVAS_WIDTH))
         # update layout dict
         layout_dict['label'] = label
-        layout_dict['input_dict'] = input_dict
+        layout_dict['present_sections'] = present_sections
         layout_dict['bbox'] = gen_bbox
 
         # save image data to stream
@@ -281,5 +279,6 @@ async def handle_add_instruction(event_stream):
         url = INFOGRAPHIC_URL + '/' + str(request_id)
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
-        await topics[topic].send(infographic_link=url, request_id=str(request_id))
+        event = Event(new_infographic_link=url, request_id=str(request_id))
+        await topics[topic].send(value=event)
         
