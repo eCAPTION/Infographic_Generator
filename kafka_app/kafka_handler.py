@@ -36,16 +36,10 @@ GENERATION_ENDPOINT = 'https://infographic-generator-106858723129.herokuapp.com'
 INFOGRAPHIC_URL = 'https://generated-infographics.s3.ap-southeast-1.amazonaws.com'
 BUCKET_NAME = 'generated-infographics'
 
-# component_id_mapping = {
-#     'title': 0,
-#     'header': 1,
-#     'related_articles': 2,
-#     'image': 3,
-#     'knowledge_graph': 4
-# }
+
 component_label_mapping = {
     'title': 0,
-    'header': 0,
+    'description': 0,
     'related_articles': 0,
     'image': 1,
     'knowledge_graph': 2
@@ -141,7 +135,7 @@ async def handle_delete_instruction(event_stream):
         infographic_link = event.infographic_link
         infographic_section = event.infographic_section
 
-        layout_object_name = infographic_link.split('/')[1] + '.json'
+        layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
         json_file_in_mem = BytesIO() 
 
         # do the infographic generation here to obtain img url
@@ -153,8 +147,29 @@ async def handle_delete_instruction(event_stream):
         label = layout_dict['label'] 
         present_sections = layout_dict['present_sections']
 
-        # remove infographic section from input dict
+        # remove infographic section from present sections
         present_sections.remove(infographic_section)
+
+        texts, imgs, graphs = [], [], []
+        print(layout_dict)
+        # create updated input_dict
+        for section in present_sections:
+            label = component_label_mapping[section]
+            if label == 0:
+                texts.append((section, layout_dict[section]))
+            elif label == 1:
+                img_url = layout_dict['image']
+                res = requests.get(img_url)
+                im = Image.open(BytesIO(res.content))
+                imgs.append(('image', im))
+            else:
+                adj_list = convert_keys_str_to_int(layout_dict['adjList'])
+                node_occurrences = convert_keys_str_to_int(layout_dict['node_occurrences']) # node "importance" values
+                entity_labels = convert_keys_str_to_int(layout_dict['entity_labels'])
+
+                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
+                graphs.append(('knowledge_graph', graph_im))
+        input_dict = {0: texts, 1: imgs, 2: graphs}
 
         # update label after removing section
         label = []
@@ -164,6 +179,7 @@ async def handle_delete_instruction(event_stream):
 
 
         # get new layout
+        print('Getting infographic layout...')
         try:
             gen_bbox, gen_label = get_generation_from_api(NUM_LABEL, label)
         except Exception as e:
@@ -186,7 +202,9 @@ async def handle_delete_instruction(event_stream):
         img_bytes.seek(0)
         json_layout_data = json.dumps(layout_dict)
         json_layout_bytes = BytesIO(json_layout_data.encode('utf-8'))
+
         # upload stream to s3 bucket
+        print('Uploading infographic...')
         img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
         json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):

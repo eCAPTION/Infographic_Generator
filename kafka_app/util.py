@@ -1,13 +1,21 @@
 import networkx as nx
 import requests
 import matplotlib.pyplot as plt
-from PIL import Image
+from PIL import Image, ImageDraw
 import json
 import boto3
 from botocore.exceptions import ClientError
 import logging
 
 GENERATION_ENDPOINT = 'https://infographic-generator-106858723129.herokuapp.com'
+
+def convert_xywh_to_ltrb(bbox):
+    xc, yc, w, h = bbox
+    x1 = xc - w / 2
+    y1 = yc - h / 2
+    x2 = xc + w / 2
+    y2 = yc + h / 2
+    return [x1, y1, x2, y2]
 
 def convert_plt_to_img(fig):
     """Convert a Matplotlib figure to a PIL Image and return it"""
@@ -18,19 +26,24 @@ def convert_plt_to_img(fig):
     img = Image.open(buf)
     return img
 
-def convert_graph_to_image(adj_list, node_occurences, entity_labels):
+def convert_keys_str_to_int(d):
+    new_d = {}
+    for k in d:
+        new_d[int(k)] = d[k]
+    return new_d
+
+def convert_graph_to_image(adj_list, node_occurrences, entity_labels):
     # create the graph
     DG = nx.DiGraph()
     # add nodes
-    for i in range(len(node_occurences)):
+    for i in range(len(node_occurrences)):
         DG.add_node(i)
     
     # add edges
     for n in adj_list:
         for nbr in adj_list[n]:
             DG.add_edge(n, nbr)
-    
-    nx.draw_networkx(DG, with_labels=True, labels=entity_labels, node_size=node_occurences)
+    nx.draw_networkx(DG, with_labels=True, labels=entity_labels, node_size=[v for v in node_occurrences.values()])
     fig = plt.gcf()
     img = convert_plt_to_img(fig)
     return img
@@ -45,8 +58,8 @@ def event_to_dict(event):
         'description': event.description,
         'related_articles': event.related_articles,
         'image': event.image,
-        'adj_list': event.adjList,
-        'node_occurences': event.node_occurences,
+        'adjList': event.adjlist,
+        'node_occurrences': event.node_occurrences,
         'entity_labels': event.entity_labels
     }
 
@@ -80,40 +93,43 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size):
         bbox, label = boxes[i], labels[i]
         x1, y1, x2, y2 = convert_xywh_to_ltrb(bbox)
         x1, y1, x2, y2 = int(x1*W), int(y1*H), int(x2*W), int(y2*H)
-
         if label == 1 or label == 2:
-            img_to_paste = input_dict[label][0].resize((x2-x1, y2-y1))
+            img_to_paste = input_dict[label][0][1].resize((x2-x1, y2-y1))
             img.paste(img_to_paste, (x1, y1, x2, y2))
             input_dict[label].pop(0)
         else:
             # text
-            text = input_dict[label][0]
+            text = input_dict[label][0][1]
             font_size = 100
             words = text.split()
-            
             while font_size > 0:
                 size = None
                 curr_words = []
                 idx = 0 # index of current word to select
+                
                 while idx < len(words):
-                    l, t, r, b = draw.multiline_textbbox((x1, y1), ' '.join(curr_words), font_size=font_size)
-                    size = (r-l, b-t) # (width, height)
-                    if size[1] > y2-y1:
+                    curr_words.append(words[idx])
+                    idx += 1
+                    l, t, r, b = draw.multiline_textbbox((x1,y1), ' '.join(curr_words), font_size=font_size)
+                    size = (r-l, b-t)
+
+                    if size[1] > y2 - y1 or (idx >= len(words) and size[0] > x2-x1): # if height exceeds or all words used and length exceeds, we have to decrease font size
                         break
-                    if size[0] < x2-x1:
-                        curr_words.append(words[idx])
-                        idx += 1
-                    else:
+                    if size[0] > x2 - x1:
                         if curr_words[-1] == '\n':
                             break
-                        curr_words.pop()
-                        idx -= 1
-                        curr_words.append('\n') # add new line  
 
-                if idx >= len(words):
+                        curr_words.pop()
+                        
+                        idx -= 1
+                        curr_words.append('\n')
+
+                if idx >= len(words) and size[0] <= x2-x1 and size[1] <= y2-y1:
+                    # stopping condition
                     break
                 font_size -= 1
             draw.multiline_text((x1, y1), ' '.join(curr_words), fill="#000", font_size=font_size)
+            input_dict[label].pop(0)
     return img
 
 # AWS Operations
