@@ -151,7 +151,6 @@ async def handle_delete_instruction(event_stream):
         present_sections.remove(infographic_section)
 
         texts, imgs, graphs = [], [], []
-        print(layout_dict)
         # create updated input_dict
         for section in present_sections:
             label = component_label_mapping[section]
@@ -229,7 +228,7 @@ async def handle_add_instruction(event_stream):
         infographic_link = event.infographic_link
         target_element = event.target_element
         
-        layout_object_name = infographic_link.split('/')[1] + '.json'
+        layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
         json_file_in_mem = BytesIO() 
 
         # do the infographic generation here to obtain img url
@@ -254,12 +253,40 @@ async def handle_add_instruction(event_stream):
             if list(component_label_mapping.keys()).index(present_sections[i]) >= list(component_label_mapping.keys()).index(target_element):
                 present_sections.insert(i-1, target_element)
                 break
+        
+
+        # get updated input_dict
+        texts, imgs, graphs = [], [], []
+        for section in present_sections:
+            label = component_label_mapping[section]
+            if label == 0:
+                if section == 'related_articles':
+                    for article in layout_dict[section]:
+                        texts.append((section, article))
+                else:
+                    texts.append((section, layout_dict[section]))
+            elif label == 1:
+                img_url = layout_dict['image']
+                res = requests.get(img_url)
+                im = Image.open(BytesIO(res.content))
+                imgs.append(('image', im))
+            else:
+                adj_list = convert_keys_str_to_int(layout_dict['adjList'])
+                node_occurrences = convert_keys_str_to_int(layout_dict['node_occurrences']) # node "importance" values
+                entity_labels = convert_keys_str_to_int(layout_dict['entity_labels'])
+
+                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
+                graphs.append(('knowledge_graph', graph_im))
+        input_dict = {0: texts, 1: imgs, 2: graphs}
+        
         # update label after adding target element
         label = []
         for k in component_label_mapping.keys():
             if k in present_sections:
                 label.append(component_label_mapping[k])
+
         # get new layout
+        print('Getting infographic layout..')
         try:
             gen_bbox, gen_label = get_generation_from_api(NUM_LABEL, label)
         except Exception as e:
@@ -284,6 +311,7 @@ async def handle_add_instruction(event_stream):
         json_layout_bytes = BytesIO(json_layout_data.encode('utf-8'))
 
         # upload stream to s3 bucket
+        print('Uploading infographic..')
         img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
         json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):
