@@ -1,5 +1,4 @@
 import os
-import copy
 import json
 import requests
 from botocore.exceptions import ClientError
@@ -61,9 +60,11 @@ async def handle_infographic_generation(event_stream):
         title = event.title
         desc = event.description
         related_articles = event.related_articles
-        texts = [('title', title), ('description', desc)]
+        
+        related_article_str = ''
         for article in related_articles:
-            texts.append(('related_articles', article))
+            related_article_str += article + '\n'
+        texts = [('title', title), ('description', desc), ('related_articles', related_article_str)]
 
         img_url = event.image
         res = requests.get(img_url)
@@ -122,7 +123,7 @@ async def handle_infographic_generation(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/' + str(request_id)
+        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
         topic = Topic.NEW_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(infographic_link=url, request_id=str(request_id))
@@ -155,7 +156,13 @@ async def handle_delete_instruction(event_stream):
         for section in present_sections:
             label = component_label_mapping[section]
             if label == 0:
-                texts.append((section, layout_dict[section]))
+                if section == 'related_articles':
+                    related_article_str = ''
+                    for article in layout_dict[section]:
+                        related_article_str += article + '\n'
+                    texts.append((section, related_article_str))
+                else:
+                    texts.append((section, layout_dict[section]))
             elif label == 1:
                 img_url = layout_dict['image']
                 res = requests.get(img_url)
@@ -214,7 +221,7 @@ async def handle_delete_instruction(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/' + str(request_id)
+        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
@@ -261,8 +268,10 @@ async def handle_add_instruction(event_stream):
             label = component_label_mapping[section]
             if label == 0:
                 if section == 'related_articles':
+                    related_article_str = ''
                     for article in layout_dict[section]:
-                        texts.append((section, article))
+                        related_article_str += article + '\n'
+                    texts.append((section, related_article_str))
                 else:
                     texts.append((section, layout_dict[section]))
             elif label == 1:
@@ -322,7 +331,7 @@ async def handle_add_instruction(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/' + str(request_id)
+        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
