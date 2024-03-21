@@ -49,7 +49,7 @@ port = os.environ.get("GATEWAY_SERVICE_PORT")
 bootstrap_server = os.environ.get("BOOTSTRAP_SERVER")
 
 app = get_faust_app(FaustApplication.InfographicGeneration, broker_url=broker_url, port=port)
-topics = initialize_topics(app, [Topic.NEWS_SEARCH_RESULTS, Topic.ADD_INSTRUCTION, Topic.DELETE_INSTRUCTION, Topic.NEW_INFOGRAPHIC, Topic.MODIFIED_INFOGRAPHIC])
+topics = initialize_topics(app, [Topic.NEWS_SEARCH_RESULTS, Topic.ADD_INSTRUCTION, Topic.DELETE_INSTRUCTION, Topic.NEW_INFOGRAPHIC, Topic.MODIFIED_INFOGRAPHIC, Topic.MOVE_INSTRUCTION])
 
 handle_error = get_error_handler(app)
 
@@ -258,7 +258,7 @@ async def handle_add_instruction(event_stream):
         
         for i in range(len(present_sections)):
             if list(component_label_mapping.keys()).index(present_sections[i]) >= list(component_label_mapping.keys()).index(target_element):
-                present_sections.insert(i-1, target_element)
+                present_sections.insert(i, target_element)
                 break
         
 
@@ -336,4 +336,102 @@ async def handle_add_instruction(event_stream):
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
         await topics[topic].send(value=event)
-        
+    
+@app.agent(topics[Topic.MOVE_INSTRUCTION])
+async def handle_move_instruction(event_stream):
+    async for event in event_stream:
+        request_id = event.request_id
+        infographic_link = event.infographic_link
+        target_section = event.target_section
+        reference_section = event.reference_section
+        direction = event.direction
+
+        layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
+        json_file_in_mem = BytesIO() 
+
+        # metadata of existing url
+        download_fileobj(BUCKET_NAME, layout_object_name, json_file_in_mem)
+        json_file_in_mem.seek(0)
+
+        downloaded_json_data = json_file_in_mem.read()
+        layout_dict = json.loads(downloaded_json_data)
+        present_sections = layout_dict['present_sections']
+        curr_bbox, curr_label = layout_dict['bbox'], layout_dict['label']
+
+        # construct input dict
+        texts, imgs, graphs = [], [], []
+        for section in present_sections:
+            label = component_label_mapping[section]
+            if label == 0:
+                if section == 'related_articles':
+                    related_article_str = ''
+                    for article in layout_dict[section]:
+                        related_article_str += article + '\n'
+                    texts.append((section, related_article_str))
+                else:
+                    texts.append((section, layout_dict[section]))
+            elif label == 1:
+                img_url = layout_dict['image']
+                res = requests.get(img_url)
+                im = Image.open(BytesIO(res.content))
+                imgs.append(('image', im))
+            else:
+                adj_list = convert_keys_str_to_int(layout_dict['adjList'])
+                node_occurrences = convert_keys_str_to_int(layout_dict['node_occurrences']) # node "importance" values
+                entity_labels = convert_keys_str_to_int(layout_dict['entity_labels'])
+
+                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
+                graphs.append(('knowledge_graph', graph_im))
+        input_dict = {0: texts, 1: imgs, 2: graphs}
+
+        # if any of the sections are not present in current infographic
+        if target_section not in present_sections or reference_section not in present_sections:
+            await handle_error(
+                event.request_id,
+                error_type=FaustApplication.InfographicGeneration,
+                error_message='Target element already exists'
+            )
+
+        target_id = present_sections.index(target_section) + 1
+        reference_id = present_sections.index(reference_section) + 1
+
+        # get edited layout
+        print('Getting infographic layout..')
+        try:
+            gen_bbox, gen_label = get_edit_from_api(reference_id, target_id, direction, curr_bbox, NUM_LABEL, curr_label)
+        except Exception as e:
+            await handle_error(
+                event.request_id,
+                error_type=FaustApplication.InfographicGeneration,
+                error_message='Error while access infographic generation API: ' + str(e)
+            )
+            continue
+
+        infographic_img = convert_layout_to_infographic(input_dict, gen_bbox, gen_label, (CANVAS_HEIGHT, CANVAS_WIDTH))
+        # update layout dict
+        layout_dict['bbox'] = gen_bbox
+
+        # save image data to stream
+        img_bytes = BytesIO()
+        infographic_img.save(img_bytes, format='JPEG')
+        img_bytes.seek(0)
+        json_layout_data = json.dumps(layout_dict)
+        json_layout_bytes = BytesIO(json_layout_data.encode('utf-8'))
+
+        # upload stream to s3 bucket
+        print('Uploading infographic..')
+        img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
+        json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
+        if not (img_success and json_success):
+            await handle_error(
+                event.request_id,
+                error_type=FaustApplication.InfographicGeneration,
+                error_message='Error while uploading to S3: ' + str(e)
+            )
+            continue
+        # send the url back
+        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
+        topic = Topic.MODIFIED_INFOGRAPHIC
+        Event = get_event_type(topic)
+        event = Event(new_infographic_link=url, request_id=str(request_id))
+        await topics[topic].send(value=event)

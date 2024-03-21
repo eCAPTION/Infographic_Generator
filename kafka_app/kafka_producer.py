@@ -20,7 +20,7 @@ port = os.environ.get("NEWS_EMBEDDING_SERVICE")
 bootstrap_server = os.environ.get("BOOTSTRAP_SERVER")
 print(broker_url, port, bootstrap_server)
 app = get_faust_app(FaustApplication.InfographicGeneration, broker_url=broker_url, port=port)
-topics = initialize_topics(app, [Topic.NEWS_SEARCH_RESULTS, Topic.ADD_INSTRUCTION, Topic.DELETE_INSTRUCTION, Topic.NEW_INFOGRAPHIC, Topic.MODIFIED_INFOGRAPHIC])
+topics = initialize_topics(app, [Topic.NEWS_SEARCH_RESULTS, Topic.ADD_INSTRUCTION, Topic.DELETE_INSTRUCTION, Topic.NEW_INFOGRAPHIC, Topic.MODIFIED_INFOGRAPHIC, Topic.MOVE_INSTRUCTION])
 
 handle_error = get_error_handler(app)
 
@@ -33,7 +33,7 @@ handle_error = get_error_handler(app)
 #         url='abc.com/biden',
 #         title='Biden Wins',
 #         description='Biden won the US Presidential Election',
-#         related_articles=['Trump lost'],
+#         related_articles=['Trump lost', 'Democrats Rock'],
 #         image='https://www.whitehouse.gov/wp-content/uploads/2021/04/P20210303AS-1901-cropped.jpg?w=1536',
 #         adjlist={0: [1], 1: [0]},
 #         node_occurrences={0: 200, 1: 100},
@@ -54,15 +54,29 @@ handle_error = get_error_handler(app)
 #     await topics[topic].send(value=event)
 #     return "sent: {}".format(event)
 
+# @app.task
+# async def send_add_article_topic():
+#     topic = Topic.ADD_INSTRUCTION
+#     Event = get_event_type(topic)
+#     event = Event(
+#             request_id=3,
+#             infographic_section='',
+#             target_element='related_articles',
+#             infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/1.jpeg'
+#         )
+#     await topics[topic].send(value=event)
+#     return "sent: {}".format(event)
+
 @app.task
-async def send_add_article_topic():
-    topic = Topic.ADD_INSTRUCTION
+async def send_move_article_topic():
+    topic = Topic.MOVE_INSTRUCTION
     Event = get_event_type(topic)
     event = Event(
             request_id=2,
-            infographic_section='',
-            target_element='related_articles',
-            infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/1.jpeg'
+            target_section='related_articles',
+            reference_section='knowledge_graph',
+            direction='left',
+            infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/0.jpeg'
         )
     await topics[topic].send(value=event)
     return "sent: {}".format(event)
