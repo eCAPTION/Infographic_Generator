@@ -3,11 +3,14 @@ import requests
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 import json
+import os
+from dotenv import load_dotenv
 import boto3
 from botocore.exceptions import ClientError
 import logging
 
-GENERATION_ENDPOINT = 'https://infographic-generator-106858723129.herokuapp.com'
+load_dotenv()
+generation_endpoint = os.environ.get("GENERATION_ENDPOINT")
 
 def convert_xywh_to_ltrb(bbox):
     xc, yc, w, h = bbox
@@ -63,16 +66,35 @@ def event_to_dict(event):
         'entity_labels': event.entity_labels
     }
 
+def resize_pil_image(img, width, height):
+    '''
+    resizes image based on aspect ratio based on min(width, height)
+    then pads the rest with whitespace
+    '''
+    canvas = Image.new('RGB', (int(width), int(height)), color=(255,255,255))
+    img_width, img_height = img.size
+    img_width_height_ratio = img_width / img_height
+    if height < width:
+        new_size = (int(height * img_width_height_ratio), int(height))
+        upper_left = (int((width - height * img_width_height_ratio) / 2), 0)
+    else:
+        new_size = (int(width), int(width / img_width_height_ratio))
+        upper_left = (0, int((height - width / img_width_height_ratio) / 2))
+    img = img.resize(new_size)
+
+    canvas.paste(img, upper_left)
+    return canvas
+
 # Querying infographic generator endpoint
 def get_generation_from_api(num_label, label):
     headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
-    res = requests.post(url=GENERATION_ENDPOINT + '/generate', data=json.dumps({'num_label': num_label, 'label': label}), headers=headers, timeout=60)
+    res = requests.post(url=generation_endpoint + '/generate', data=json.dumps({'num_label': num_label, 'label': label}), headers=headers, timeout=60)
     bboxes, labels = res.json()['results']['bbox'], res.json()['results']['label']
     return bboxes, labels
 
 def get_edit_from_api(id_a, id_b, relation, bbox, num_label, label):
     headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
-    res = requests.post(url=GENERATION_ENDPOINT + '/edit', data=json.dumps({'id_a': id_a, 'id_b': id_b, 'relation': relation, 'bbox': bbox, 'num_label': num_label, 'label': label}), headers=headers, timeout=60)
+    res = requests.post(url=generation_endpoint + '/edit', data=json.dumps({'id_a': id_a, 'id_b': id_b, 'relation': relation, 'bbox': bbox, 'num_label': num_label, 'label': label}), headers=headers, timeout=60)
     bboxes, labels = res.json()['results']['bbox'], res.json()['results']['label']
     return bboxes, labels
 
@@ -94,7 +116,7 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size):
         x1, y1, x2, y2 = convert_xywh_to_ltrb(bbox)
         x1, y1, x2, y2 = int(x1*W), int(y1*H), int(x2*W), int(y2*H)
         if label == 1 or label == 2:
-            img_to_paste = input_dict[label][0][1].resize((x2-x1, y2-y1))
+            img_to_paste = resize_pil_image(input_dict[label][0][1], x2-x1, y2-y1)
             img.paste(img_to_paste, (x1, y1, x2, y2))
             input_dict[label].pop(0)
         else:
