@@ -1,5 +1,6 @@
 import os
 import json
+import bisect
 import requests
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
@@ -31,9 +32,6 @@ entity_labels = dict[int, str]
 # Constants
 NUM_LABEL = 5
 CANVAS_HEIGHT, CANVAS_WIDTH = 594, 420
-GENERATION_ENDPOINT = 'https://infographic-generator-106858723129.herokuapp.com'
-INFOGRAPHIC_URL = 'https://generated-infographics.s3.ap-southeast-1.amazonaws.com'
-BUCKET_NAME = 'generated-infographics'
 
 
 component_label_mapping = {
@@ -43,10 +41,13 @@ component_label_mapping = {
     'image': 1,
     'knowledge_graph': 2
 }
+
 load_dotenv()
 broker_url = os.environ.get("KAFKA_BROKER_URL")
 port = os.environ.get("GATEWAY_SERVICE_PORT")
 bootstrap_server = os.environ.get("BOOTSTRAP_SERVER")
+s3_bucket_name = os.environ.get("S3_BUCKET_NAME")
+infographic_base_url = os.environ.get("INFOGRAPHIC_BASE_URL")
 
 app = get_faust_app(FaustApplication.InfographicGeneration, broker_url=broker_url, port=port)
 topics = initialize_topics(app, [Topic.NEWS_SEARCH_RESULTS, Topic.ADD_INSTRUCTION, Topic.DELETE_INSTRUCTION, Topic.NEW_INFOGRAPHIC, Topic.MODIFIED_INFOGRAPHIC, Topic.MOVE_INSTRUCTION])
@@ -113,8 +114,8 @@ async def handle_infographic_generation(event_stream):
         
         # upload stream to s3 bucket
         print('Uploading infographic...')
-        img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
-        json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
+        img_success = upload_fileobj(img_bytes, s3_bucket_name, '{}.jpeg'.format(str(request_id)))
+        json_success = upload_fileobj(json_layout_bytes, s3_bucket_name, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):
             await handle_error(
                 event.request_id,
@@ -123,7 +124,7 @@ async def handle_infographic_generation(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
+        url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.NEW_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(infographic_link=url, request_id=str(request_id))
@@ -140,7 +141,7 @@ async def handle_delete_instruction(event_stream):
         json_file_in_mem = BytesIO() 
 
         # do the infographic generation here to obtain img url
-        download_fileobj(BUCKET_NAME, layout_object_name, json_file_in_mem)
+        download_fileobj(s3_bucket_name, layout_object_name, json_file_in_mem)
         json_file_in_mem.seek(0)
 
         downloaded_json_data = json_file_in_mem.read()
@@ -211,8 +212,8 @@ async def handle_delete_instruction(event_stream):
 
         # upload stream to s3 bucket
         print('Uploading infographic...')
-        img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
-        json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
+        img_success = upload_fileobj(img_bytes, s3_bucket_name, '{}.jpeg'.format(str(request_id)))
+        json_success = upload_fileobj(json_layout_bytes, s3_bucket_name, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):
             await handle_error(
                 event.request_id,
@@ -221,7 +222,7 @@ async def handle_delete_instruction(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
+        url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
@@ -241,7 +242,7 @@ async def handle_add_instruction(event_stream):
         # do the infographic generation here to obtain img url
 
         # get metadata of existing layout
-        download_fileobj(BUCKET_NAME, layout_object_name, json_file_in_mem)
+        download_fileobj(s3_bucket_name, layout_object_name, json_file_in_mem)
         json_file_in_mem.seek(0)
 
         downloaded_json_data = json_file_in_mem.read()
@@ -255,11 +256,11 @@ async def handle_add_instruction(event_stream):
                 error_type=FaustApplication.InfographicGeneration,
                 error_message='Target element already exists'
             )
-        
+
         for i in range(len(present_sections)):
-            if list(component_label_mapping.keys()).index(present_sections[i]) >= list(component_label_mapping.keys()).index(target_element):
-                present_sections.insert(i, target_element)
+            if list(component_label_mapping.keys()).index(present_sections[i]) > list(component_label_mapping.keys()).index(target_element):
                 break
+        present_sections = present_sections[:i] + [target_element] + present_sections[i:]
         
 
         # get updated input_dict
@@ -321,8 +322,8 @@ async def handle_add_instruction(event_stream):
 
         # upload stream to s3 bucket
         print('Uploading infographic..')
-        img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
-        json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
+        img_success = upload_fileobj(img_bytes, s3_bucket_name, '{}.jpeg'.format(str(request_id)))
+        json_success = upload_fileobj(json_layout_bytes, s3_bucket_name, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):
             await handle_error(
                 event.request_id,
@@ -331,7 +332,7 @@ async def handle_add_instruction(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
+        url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
@@ -350,7 +351,7 @@ async def handle_move_instruction(event_stream):
         json_file_in_mem = BytesIO() 
 
         # metadata of existing url
-        download_fileobj(BUCKET_NAME, layout_object_name, json_file_in_mem)
+        download_fileobj(s3_bucket_name, layout_object_name, json_file_in_mem)
         json_file_in_mem.seek(0)
 
         downloaded_json_data = json_file_in_mem.read()
@@ -420,8 +421,8 @@ async def handle_move_instruction(event_stream):
 
         # upload stream to s3 bucket
         print('Uploading infographic..')
-        img_success = upload_fileobj(img_bytes, BUCKET_NAME, '{}.jpeg'.format(str(request_id)))
-        json_success = upload_fileobj(json_layout_bytes, BUCKET_NAME, '{}.json'.format(str(request_id)))
+        img_success = upload_fileobj(img_bytes, s3_bucket_name, '{}.jpeg'.format(str(request_id)))
+        json_success = upload_fileobj(json_layout_bytes, s3_bucket_name, '{}.json'.format(str(request_id)))
         if not (img_success and json_success):
             await handle_error(
                 event.request_id,
@@ -430,7 +431,7 @@ async def handle_move_instruction(event_stream):
             )
             continue
         # send the url back
-        url = INFOGRAPHIC_URL + '/{}.jpeg'.format(str(request_id))
+        url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
