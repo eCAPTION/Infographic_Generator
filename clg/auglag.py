@@ -4,7 +4,7 @@ from torch_geometric.utils import to_dense_batch
 
 class AugLagMethod():
     def __init__(self, netG, netD, inner_optimizer, constraints,
-                 alpha=3., l0=0., m0=1., iteration=10, tolerance=1e-8,
+                 alpha=3., l0=0., m0=1., iteration=15, tolerance=1e-8,
                  clamp_f=True, raise_error_if_failed=False):
         self.netG = netG
         self.netD = netD
