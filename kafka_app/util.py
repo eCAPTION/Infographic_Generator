@@ -1,7 +1,7 @@
 import networkx as nx
 import requests
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import json
 import os
 from dotenv import load_dotenv
@@ -11,6 +11,14 @@ import logging
 
 load_dotenv()
 generation_endpoint = os.environ.get("GENERATION_ENDPOINT")
+
+component_label_mapping = {
+    'title': 0,
+    'description': 0,
+    'related_articles': 0,
+    'image': 1,
+    'knowledge_graph': 2
+}
 
 def convert_xywh_to_ltrb(bbox):
     xc, yc, w, h = bbox
@@ -98,18 +106,91 @@ def get_edit_from_api(id_a, id_b, relation, bbox, num_label, label):
     bboxes, labels = res.json()['results']['bbox'], res.json()['results']['label']
     return bboxes, labels
 
-def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size): 
-    '''
-    the input is a dict[label_index: [values of each label element]]
-    e.g. {0: ['Biden', 'Trump']}
-    images are represented by Pillow Image object.
-    '''
+def draw_text_on_canvas(text, color, background_color, canvas_size):
     H, W = canvas_size
-    img = Image.new('RGB', (int(W), int(H)), color=(255,255,255))
+    img = Image.new('RGB', (int(W), int(H)), color=background_color)
     draw = ImageDraw.Draw(img, 'RGBA')
 
+    font_size = 100
+    words = text.split()
+    while font_size > 0:
+        size = None
+        curr_words = []
+        idx = 0 # index of current word to select
+        
+        while idx < len(words):
+            curr_words.append(words[idx])
+            idx += 1
+            l, t, r, b = draw.multiline_textbbox((0,0), ' '.join(curr_words), font_size=font_size)
+            size = (1.1 * (r-l), 1.1 * (b-t))
+
+            if size[1] > H or (idx >= len(words) and size[0] > W): # if height exceeds or all words used and length exceeds, we have to decrease font size
+                break
+            if size[0] > W:
+                if curr_words[-1] == '\n':
+                    break
+
+                curr_words.pop()
+                
+                idx -= 1
+                curr_words.append('\n')
+
+        if idx >= len(words) and size[0] <= W and size[1] <= H:
+            # stopping condition
+            break
+        font_size -= 1
+    draw.multiline_text((0, 0), ' '.join(curr_words), fill=color, font_size=font_size)
+    l, t, r, b = draw.multiline_textbbox((0,0), ' '.join(curr_words), font_size=font_size)
+    return img
+
+def create_text_section(section_header, text, canvas_size, header_ratio=0.2):
+    H, W = canvas_size
+    header_height= int(header_ratio * H)
+    # print(header_height, W)
+    body_height = H - header_height
+    img = Image.new('RGB', (int(W), int(H)), color=(255,255,255))
+    header_img = draw_text_on_canvas(section_header, '#1e65ff', '#ffffff', (header_height, W))
+    body_img = draw_text_on_canvas(text, '#000000', '#ffffff', (body_height, W))
+    img.paste(header_img, (0, 0, W, header_height))
+    img.paste(body_img, (0, header_height, W, H))
+    return img
+
+def create_title_section(text, canvas_size):
+    H, W = canvas_size
+    text = text.upper()
+    return draw_text_on_canvas(text, '#ffffff', '#1e65ff', canvas_size)
+
+
+def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_ratio=0.15): 
+    '''
+    the input is a dict[label_index: [values of each label element]]
+    present_sections is a list of string describing the sections present
+    e.g. {0: [('title', 'Trump wins election')]}
+    images are represented by Pillow Image object.
+    '''
+    sections_to_headings = {
+        'description': 'DESCRIPTION',
+        'related_articles': 'RELATED ARTICLES',
+    }
+
+    # extract the header to be placed at the top.
+    for i, text_tup in enumerate(input_dict[0]):
+        if text_tup[0] == 'title':
+            break
+    title_tup = input_dict[0].pop(i)
+
+
+    H, W = canvas_size
+    img = Image.new('RGB', (int(W), int(H)), color=(255,255,255))
+
+    title_height = int(title_ratio * H)
+    title_img = create_title_section(title_tup[1], (title_height, W))
+    img.paste(title_img, (0, 0, W, title_height))
+
+    H -= title_height
+
     area = [b[2] * b[3] for b in boxes]
-    indices = sorted(range(len(area)), key=lambda i:area[i], reverse=True)
+    indices = sorted(range(len(area)), key=lambda i : area[i], reverse=True)
 
     for i in indices:
         bbox, label = boxes[i], labels[i]
@@ -117,40 +198,13 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size):
         x1, y1, x2, y2 = int(x1*W), int(y1*H), int(x2*W), int(y2*H)
         if label == 1 or label == 2:
             img_to_paste = resize_pil_image(input_dict[label][0][1], x2-x1, y2-y1)
-            img.paste(img_to_paste, (x1, y1, x2, y2))
+            img.paste(img_to_paste, (x1, y1 + title_height, x2, y2 + title_height))
             input_dict[label].pop(0)
         else:
             # text
-            text = input_dict[label][0][1]
-            font_size = 100
-            words = text.split()
-            while font_size > 0:
-                size = None
-                curr_words = []
-                idx = 0 # index of current word to select
-                
-                while idx < len(words):
-                    curr_words.append(words[idx])
-                    idx += 1
-                    l, t, r, b = draw.multiline_textbbox((x1,y1), ' '.join(curr_words), font_size=font_size)
-                    size = (r-l, b-t)
-
-                    if size[1] > y2 - y1 or (idx >= len(words) and size[0] > x2-x1): # if height exceeds or all words used and length exceeds, we have to decrease font size
-                        break
-                    if size[0] > x2 - x1:
-                        if curr_words[-1] == '\n':
-                            break
-
-                        curr_words.pop()
-                        
-                        idx -= 1
-                        curr_words.append('\n')
-
-                if idx >= len(words) and size[0] <= x2-x1 and size[1] <= y2-y1:
-                    # stopping condition
-                    break
-                font_size -= 1
-            draw.multiline_text((x1, y1), ' '.join(curr_words), fill="#000", font_size=font_size)
+            text_tup = input_dict[label][0]
+            text_img = create_text_section(sections_to_headings[text_tup[0]], text_tup[1], (y2 - y1, x2 - x1))
+            img.paste(text_img, (x1, y1 + title_height, x2, y2 + title_height))
             input_dict[label].pop(0)
     return img
 

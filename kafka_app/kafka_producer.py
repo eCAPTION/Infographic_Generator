@@ -31,9 +31,9 @@ handle_error = get_error_handler(app)
 #     event = Event(
 #         request_id=0,
 #         url='abc.com/biden',
-#         title='Biden Wins',
-#         description='Biden won the US Presidential Election',
-#         related_articles=['Trump lost', 'Democrats Rock'],
+#         title='Biden tries to turn the tables on Trump’s use of a classic political attack line',
+#         description='President Joe Biden delivers remarks on lowering costs for American families, in Las Vegas, Nevada, on March 19.',
+#         related_articles=['Opinion: How Joe Biden is flipping the script on Trump', 'Opinion: Which America do you choose?'],
 #         image='https://www.whitehouse.gov/wp-content/uploads/2021/04/P20210303AS-1901-cropped.jpg?w=1536',
 #         adjlist={0: [1], 1: [0]},
 #         node_occurrences={0: 200, 1: 100},
@@ -48,38 +48,38 @@ handle_error = get_error_handler(app)
 #     Event = get_event_type(topic)
 #     event = Event(
 #             request_id=1,
-#             infographic_section='related_articles',
+#             infographic_section='knowledge_graph',
 #             infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/0.jpeg'
 #         )
 #     await topics[topic].send(value=event)
 #     return "sent: {}".format(event)
 
-# @app.task
-# async def send_add_article_topic():
-#     topic = Topic.ADD_INSTRUCTION
-#     Event = get_event_type(topic)
-#     event = Event(
-#             request_id=3,
-#             infographic_section='',
-#             target_element='related_articles',
-#             infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/1.jpeg'
-#         )
-#     await topics[topic].send(value=event)
-#     return "sent: {}".format(event)
-
 @app.task
-async def send_move_article_topic():
-    topic = Topic.MOVE_INSTRUCTION
-    Event = get_event_type(topic)
+async def send_add_article_topic():
+    topic = Topic.ADD_INSTRUCTION
+    Event = get_event_type(topic)   
     event = Event(
             request_id=2,
-            target_section='related_articles',
-            reference_section='knowledge_graph',
-            direction='left',
-            infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/0.jpeg'
+            infographic_section='',
+            target_element='knowledge_graph',
+            infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/1.jpeg'
         )
     await topics[topic].send(value=event)
     return "sent: {}".format(event)
+
+# @app.task
+# async def send_move_article_topic():
+#     topic = Topic.MOVE_INSTRUCTION
+#     Event = get_event_type(topic)
+#     event = Event(
+#             request_id=2,
+#             target_section='related_articles',
+#             reference_section='knowledge_graph',
+#             direction='left',
+#             infographic_link='https://generated-infographics.s3.ap-southeast-1.amazonaws.com/0.jpeg'
+#         )
+#     await topics[topic].send(value=event)
+#     return "sent: {}".format(event)
 
 if __name__ == '__main__':
     app.main()

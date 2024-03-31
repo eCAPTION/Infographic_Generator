@@ -85,8 +85,9 @@ async def handle_infographic_generation(event_stream):
         input_dict = {0: texts, 1: imgs, 2: graphs}
         present_sections = [k for k in component_label_mapping.keys()]
         for k in input_dict:
-            for _ in range(len(input_dict[k])):
-                label.append(k)
+            for i in range(len(input_dict[k])):
+                if input_dict[k][i][0] != 'title': # title is fixed so don't need layout for it
+                    label.append(k)
         print('Getting infographic layout...')
         try:
             gen_bbox, gen_label = get_generation_from_api(NUM_LABEL, label)
@@ -150,6 +151,15 @@ async def handle_delete_instruction(event_stream):
         present_sections = layout_dict['present_sections']
 
         # remove infographic section from present sections
+
+        # cannot remove title, send error
+        if infographic_section == 'title':
+            await handle_error(
+                event.request_id,
+                error_type=FaustApplication.InfographicGeneration,
+                error_message='Not allowed to remove title'
+            )
+            continue
         present_sections.remove(infographic_section)
 
         texts, imgs, graphs = [], [], []
