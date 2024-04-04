@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import boto3
 from botocore.exceptions import ClientError
 import logging
+import numpy as np
 
 load_dotenv()
 generation_endpoint = os.environ.get("GENERATION_ENDPOINT")
@@ -16,8 +17,10 @@ component_label_mapping = {
     'title': 0,
     'description': 0,
     'related_articles': 0,
-    'image': 1,
-    'knowledge_graph': 2
+    'related_facts': 0,
+    'knowledge_graph': 3,
+    'image': 4,
+    
 }
 
 def convert_xywh_to_ltrb(bbox):
@@ -43,20 +46,27 @@ def convert_keys_str_to_int(d):
         new_d[int(k)] = d[k]
     return new_d
 
-def convert_graph_to_image(adj_list, node_occurrences, entity_labels):
+def convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels):
     # create the graph
     DG = nx.DiGraph()
     # add nodes
-    for i in range(len(node_occurrences)):
-        DG.add_node(i)
-    
+    for n in node_occurrences:
+        DG.add_node(n)
     # add edges
+    edge_labels = {}
     for n in adj_list:
         for nbr in adj_list[n]:
-            DG.add_edge(n, nbr)
-    nx.draw_networkx(DG, with_labels=True, labels=entity_labels, node_size=[v for v in node_occurrences.values()])
+            dest_node, label_id = nbr
+            DG.add_edge(n, dest_node)
+            edge_labels[(n, dest_node)] = property_labels[label_id]
+    # pos = nx.spring_layout(DG)
+
+    # print(len([v for v in node_occurrences.values()]))
+    nx.draw_networkx(DG, node_size=[v for v in node_occurrences.values()])
+    # nx.draw_networkx_edge_labels(DG, pos, edge_labels=edge_labels, font_color='red')
     fig = plt.gcf()
     img = convert_plt_to_img(fig)
+    img.save('graph.png')
     return img
 
 def event_to_dict(event):
@@ -68,10 +78,12 @@ def event_to_dict(event):
         'title': event.title,
         'description': event.description,
         'related_articles': event.related_articles,
+        'related_facts': event.related_facts,
         'image': event.image,
         'adjList': event.adjlist,
         'node_occurrences': event.node_occurrences,
-        'entity_labels': event.entity_labels
+        'entity_labels': event.entity_labels,
+        'property_labels': event.property_labels
     }
 
 def resize_pil_image(img, width, height):
@@ -196,7 +208,7 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_
         bbox, label = boxes[i], labels[i]
         x1, y1, x2, y2 = convert_xywh_to_ltrb(bbox)
         x1, y1, x2, y2 = int(x1*W), int(y1*H), int(x2*W), int(y2*H)
-        if label == 1 or label == 2:
+        if label == 3 or label == 4:
             img_to_paste = resize_pil_image(input_dict[label][0][1], x2-x1, y2-y1)
             img.paste(img_to_paste, (x1, y1 + title_height, x2, y2 + title_height))
             input_dict[label].pop(0)
