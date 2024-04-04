@@ -70,7 +70,11 @@ async def handle_infographic_generation(event_stream):
         related_fact_str = ''
         for fact in related_facts:
             related_fact_str += fact + '\n'
-        texts = [('title', title), ('description', desc), ('related_articles', related_article_str), ('related_facts', related_fact_str)]
+        texts = [('title', title), ('description', desc)]
+        if len(related_articles) > 0:
+            texts.append(('related_articles', related_article_str))
+        if len(related_facts) > 0:
+            texts.append(('related_facts', related_fact_str))
 
         img_url = event.image
         res = requests.get(img_url)
@@ -84,7 +88,8 @@ async def handle_infographic_generation(event_stream):
         property_labels = convert_keys_str_to_int(event.property_labels)
 
         graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels) # im is a Pillow Image object
-        graphs = [('knowledge_graph', graph_im)]
+
+        graphs = [('knowledge_graph', graph_im)] if len(node_occurrences) > 0 else []
 
         # do the infographic generation here to obtain img url
         label = []
