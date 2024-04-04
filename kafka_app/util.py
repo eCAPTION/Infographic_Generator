@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import boto3
 from botocore.exceptions import ClientError
 import logging
+import numpy as np
 
 load_dotenv()
 generation_endpoint = os.environ.get("GENERATION_ENDPOINT")
@@ -16,8 +17,10 @@ component_label_mapping = {
     'title': 0,
     'description': 0,
     'related_articles': 0,
-    'image': 1,
-    'knowledge_graph': 2
+    'related_facts': 0,
+    'knowledge_graph': 3,
+    'image': 4,
+
 }
 
 def convert_xywh_to_ltrb(bbox):
@@ -47,14 +50,15 @@ def convert_graph_to_image(adj_list, node_occurrences, entity_labels):
     # create the graph
     DG = nx.DiGraph()
     # add nodes
-    for i in range(len(node_occurrences)):
-        DG.add_node(i)
-    
-    # add edges
+    for n in node_occurrences:
+        DG.add_node(n)
+
     for n in adj_list:
         for nbr in adj_list[n]:
-            DG.add_edge(n, nbr)
-    nx.draw_networkx(DG, with_labels=True, labels=entity_labels, node_size=[v for v in node_occurrences.values()])
+            dest_node, label_id = nbr
+            DG.add_edge(n, dest_node)
+
+    nx.draw_networkx(DG, pos=nx.circular_layout(DG), with_labels=True, labels=entity_labels, font_size=8, node_color='#42ff93', node_size=[v * 100 for v in node_occurrences.values()])
     fig = plt.gcf()
     img = convert_plt_to_img(fig)
     return img
@@ -68,10 +72,12 @@ def event_to_dict(event):
         'title': event.title,
         'description': event.description,
         'related_articles': event.related_articles,
+        'related_facts': event.related_facts,
         'image': event.image,
         'adjList': event.adjlist,
         'node_occurrences': event.node_occurrences,
-        'entity_labels': event.entity_labels
+        'entity_labels': event.entity_labels,
+        'property_labels': event.property_labels
     }
 
 def resize_pil_image(img, width, height):
@@ -117,7 +123,7 @@ def draw_text_on_canvas(text, color, background_color, canvas_size):
         size = None
         curr_words = []
         idx = 0 # index of current word to select
-        
+
         while idx < len(words):
             curr_words.append(words[idx])
             idx += 1
@@ -131,7 +137,7 @@ def draw_text_on_canvas(text, color, background_color, canvas_size):
                     break
 
                 curr_words.pop()
-                
+
                 idx -= 1
                 curr_words.append('\n')
 
@@ -140,7 +146,6 @@ def draw_text_on_canvas(text, color, background_color, canvas_size):
             break
         font_size -= 1
     draw.multiline_text((0, 0), ' '.join(curr_words), fill=color, font_size=font_size)
-    l, t, r, b = draw.multiline_textbbox((0,0), ' '.join(curr_words), font_size=font_size)
     return img
 
 def create_text_section(section_header, text, canvas_size, header_ratio=0.2):
@@ -161,7 +166,7 @@ def create_title_section(text, canvas_size):
     return draw_text_on_canvas(text, '#ffffff', '#1e65ff', canvas_size)
 
 
-def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_ratio=0.15): 
+def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_ratio=0.15):
     '''
     the input is a dict[label_index: [values of each label element]]
     present_sections is a list of string describing the sections present
@@ -171,6 +176,7 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_
     sections_to_headings = {
         'description': 'DESCRIPTION',
         'related_articles': 'RELATED ARTICLES',
+        'related_facts': 'RELATED FACTS'
     }
 
     # extract the header to be placed at the top.
@@ -196,7 +202,7 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_
         bbox, label = boxes[i], labels[i]
         x1, y1, x2, y2 = convert_xywh_to_ltrb(bbox)
         x1, y1, x2, y2 = int(x1*W), int(y1*H), int(x2*W), int(y2*H)
-        if label == 1 or label == 2:
+        if label == 3 or label == 4:
             img_to_paste = resize_pil_image(input_dict[label][0][1], x2-x1, y2-y1)
             img.paste(img_to_paste, (x1, y1 + title_height, x2, y2 + title_height))
             input_dict[label].pop(0)
