@@ -59,11 +59,11 @@ def convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_l
             dest_node, label_id = nbr
             DG.add_edge(n, dest_node)
             edge_labels[(n, dest_node)] = property_labels[label_id]
-    # pos = nx.spring_layout(DG)
+    pos = nx.spring_layout(DG)
 
     # print(len([v for v in node_occurrences.values()]))
-    nx.draw_networkx(DG, node_size=[v for v in node_occurrences.values()])
-    # nx.draw_networkx_edge_labels(DG, pos, edge_labels=edge_labels, font_color='red')
+    nx.draw_networkx(DG, with_labels=True, labels=entity_labels, node_size=[v for v in node_occurrences.values()])
+    nx.draw_networkx_edge_labels(DG, pos, edge_labels=edge_labels, font_color='red')
     fig = plt.gcf()
     img = convert_plt_to_img(fig)
     img.save('graph.png')
@@ -183,6 +183,7 @@ def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_
     sections_to_headings = {
         'description': 'DESCRIPTION',
         'related_articles': 'RELATED ARTICLES',
+        'related_facts': 'RELATED FACTS'
     }
 
     # extract the header to be placed at the top.
