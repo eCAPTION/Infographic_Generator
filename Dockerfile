@@ -25,5 +25,5 @@ RUN ./download_model.sh
 
 # run the app
 RUN chmod +x start.sh
-# EXPOSE 80
+EXPOSE 80
 CMD ["./start.sh"]
