@@ -92,7 +92,7 @@ async def handle_infographic_generation(event_stream):
 
         # do the infographic generation here to obtain img url
         label = []
-        input_dict = {0: texts, 4: imgs, 3: graphs}
+        input_dict = {0: texts, 3: graphs, 4: imgs}
         present_sections = [k for k in component_label_mapping.keys()]
         for k in input_dict:
             for i in range(len(input_dict[k])):
@@ -177,11 +177,16 @@ async def handle_delete_instruction(event_stream):
         for section in present_sections:
             label = component_label_mapping[section]
             if label == 0:
-                if section == 'related_articles' or section == 'related_facts':
+                if section == 'related_articles':
                     related_article_str = ''
-                    for article in layout_dict[section]:
+                    for article in layout_dict[section][:5]:
                         related_article_str += article['title'] + '\n'
                     texts.append((section, related_article_str))
+                elif section == 'related_facts':
+                    related_fact_str = ''
+                    for fact in layout_dict[section][:5]:
+                        related_fact_str += fact + '\n'
+                    texts.append((section, related_fact_str))
                 else:
                     texts.append((section, layout_dict[section]))
             elif label == 4:
@@ -197,11 +202,11 @@ async def handle_delete_instruction(event_stream):
                 graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
-
+        print(related_fact_str)
         # update label after removing section
         label = []
         for k in component_label_mapping.keys():
-            if k in present_sections:
+            if k in present_sections and k != 'title':
                 label.append(component_label_mapping[k])
 
 
@@ -288,11 +293,16 @@ async def handle_add_instruction(event_stream):
         for section in present_sections:
             label = component_label_mapping[section]
             if label == 0:
-                if section == 'related_articles' or section == 'related_facts':
+                if section == 'related_articles':
                     related_article_str = ''
-                    for article in layout_dict[section]:
+                    for article in layout_dict[section][:5]:
                         related_article_str += article['title'] + '\n'
                     texts.append((section, related_article_str))
+                elif section == 'related_facts':
+                    related_fact_str = ''
+                    for fact in layout_dict[section][:5]:
+                        related_fact_str += fact + '\n'
+                    texts.append((section, related_fact_str))
                 else:
                     texts.append((section, layout_dict[section]))
             elif label == 4:
@@ -311,7 +321,7 @@ async def handle_add_instruction(event_stream):
         # update label after adding target element
         label = []
         for k in component_label_mapping.keys():
-            if k in present_sections:
+            if k in present_sections and  k != 'title':
                 label.append(component_label_mapping[k])
 
         # get new layout
@@ -357,6 +367,7 @@ async def handle_add_instruction(event_stream):
         event = Event(new_infographic_link=url, request_id=request_id)
         await topics[topic].send(value=event)
 
+# assume we don't refer to the title section!
 @app.agent(topics[Topic.MOVE_INSTRUCTION])
 async def handle_move_instruction(event_stream):
     async for event in event_stream:
@@ -383,11 +394,16 @@ async def handle_move_instruction(event_stream):
         for section in present_sections:
             label = component_label_mapping[section]
             if label == 0:
-                if section == 'related_articles' or section == 'related_facts':
+                if section == 'related_articles':
                     related_article_str = ''
-                    for article in layout_dict[section]:
+                    for article in layout_dict[section][:5]:
                         related_article_str += article['title'] + '\n'
                     texts.append((section, related_article_str))
+                elif section == 'related_facts':
+                    related_fact_str = ''
+                    for fact in layout_dict[section][:5]:
+                        related_fact_str += fact + '\n'
+                    texts.append((section, related_fact_str))
                 else:
                     texts.append((section, layout_dict[section]))
             elif label == 4:
@@ -403,7 +419,7 @@ async def handle_move_instruction(event_stream):
                 graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
-
+        print(present_sections)
         # if any of the sections are not present in current infographic
         if target_section not in present_sections or reference_section not in present_sections:
             await handle_error(
@@ -411,9 +427,8 @@ async def handle_move_instruction(event_stream):
                 error_type=FaustApplication.InfographicGeneration,
                 error_message='Target element already exists'
             )
-
-        target_id = present_sections.index(target_section) + 1
-        reference_id = present_sections.index(reference_section) + 1
+        target_id = present_sections.index(target_section) 
+        reference_id = present_sections.index(reference_section)
 
         # get edited layout
         print('Getting infographic layout..')
