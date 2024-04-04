@@ -31,7 +31,7 @@ entity_labels = dict[int, str]
 
 # Constants
 NUM_LABEL = 5
-CANVAS_HEIGHT, CANVAS_WIDTH = 594, 420
+CANVAS_HEIGHT, CANVAS_WIDTH = 1200, 840
 
 
 component_label_mapping = {
@@ -64,11 +64,11 @@ async def handle_infographic_generation(event_stream):
         related_facts = event.related_facts
 
         related_article_str = ''
-        for article in related_articles:
+        for article in related_articles[:5]: # restrict to 5
             related_article_str += article['title'] + '\n'
 
         related_fact_str = ''
-        for fact in related_facts:
+        for fact in related_facts[:5]: # restrict to 5
             related_fact_str += fact + '\n'
         texts = [('title', title), ('description', desc)]
         if len(related_articles) > 0:
@@ -85,9 +85,8 @@ async def handle_infographic_generation(event_stream):
         adj_list = convert_keys_str_to_int(event.adjlist)
         node_occurrences = convert_keys_str_to_int(event.node_occurrences) # node "importance" values
         entity_labels = convert_keys_str_to_int(event.entity_labels)
-        property_labels = convert_keys_str_to_int(event.property_labels)
 
-        graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels) # im is a Pillow Image object
+        graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
 
         graphs = [('knowledge_graph', graph_im)] if len(node_occurrences) > 0 else []
 
@@ -194,9 +193,8 @@ async def handle_delete_instruction(event_stream):
                 adj_list = convert_keys_str_to_int(layout_dict['adjList'])
                 node_occurrences = convert_keys_str_to_int(layout_dict['node_occurrences']) # node "importance" values
                 entity_labels = convert_keys_str_to_int(layout_dict['entity_labels'])
-                property_labels = convert_keys_str_to_int(layout_dict['property_labels'])
 
-                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels) # im is a Pillow Image object
+                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
 
@@ -247,7 +245,7 @@ async def handle_delete_instruction(event_stream):
         url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
-        event = Event(new_infographic_link=url, request_id=str(request_id))
+        event = Event(new_infographic_link=url, request_id=request_id)
         await topics[topic].send(value=event)
 
 
@@ -306,9 +304,8 @@ async def handle_add_instruction(event_stream):
                 adj_list = convert_keys_str_to_int(layout_dict['adjList'])
                 node_occurrences = convert_keys_str_to_int(layout_dict['node_occurrences']) # node "importance" values
                 entity_labels = convert_keys_str_to_int(layout_dict['entity_labels'])
-                property_labels = convert_keys_str_to_int(layout_dict['property_labels'])
 
-                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels) # im is a Pillow Image object
+                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
         # update label after adding target element
@@ -357,7 +354,7 @@ async def handle_add_instruction(event_stream):
         url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
-        event = Event(new_infographic_link=url, request_id=str(request_id))
+        event = Event(new_infographic_link=url, request_id=request_id)
         await topics[topic].send(value=event)
 
 @app.agent(topics[Topic.MOVE_INSTRUCTION])
@@ -402,9 +399,8 @@ async def handle_move_instruction(event_stream):
                 adj_list = convert_keys_str_to_int(layout_dict['adjList'])
                 node_occurrences = convert_keys_str_to_int(layout_dict['node_occurrences']) # node "importance" values
                 entity_labels = convert_keys_str_to_int(layout_dict['entity_labels'])
-                property_labels = convert_keys_str_to_int(layout_dict['property_labels'])
 
-                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels) # im is a Pillow Image object
+                graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
 
@@ -457,5 +453,5 @@ async def handle_move_instruction(event_stream):
         url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.MODIFIED_INFOGRAPHIC
         Event = get_event_type(topic)
-        event = Event(new_infographic_link=url, request_id=str(request_id))
+        event = Event(new_infographic_link=url, request_id=request_id)
         await topics[topic].send(value=event)

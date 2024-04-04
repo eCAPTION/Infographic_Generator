@@ -46,28 +46,21 @@ def convert_keys_str_to_int(d):
         new_d[int(k)] = d[k]
     return new_d
 
-def convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels):
+def convert_graph_to_image(adj_list, node_occurrences, entity_labels):
     # create the graph
     DG = nx.DiGraph()
     # add nodes
     for n in node_occurrences:
         DG.add_node(n)
-    # add edges
-    edge_labels = {}
 
     for n in adj_list:
         for nbr in adj_list[n]:
             dest_node, label_id = nbr
             DG.add_edge(n, dest_node)
-            edge_labels[(n, dest_node)] = property_labels[label_id]
-    pos = nx.spring_layout(DG)
 
-    # print(len([v for v in node_occurrences.values()]))
-    nx.draw_networkx(DG, with_labels=True, labels=entity_labels, node_size=[v for v in node_occurrences.values()])
-    nx.draw_networkx_edge_labels(DG, pos, edge_labels=edge_labels, font_color='red')
+    nx.draw_networkx(DG, pos=nx.circular_layout(DG), with_labels=True, labels=entity_labels, font_size=8, node_color='#42ff93', node_size=[v * 100 for v in node_occurrences.values()])
     fig = plt.gcf()
     img = convert_plt_to_img(fig)
-    img.save('graph.png')
     return img
 
 def event_to_dict(event):
@@ -153,7 +146,6 @@ def draw_text_on_canvas(text, color, background_color, canvas_size):
             break
         font_size -= 1
     draw.multiline_text((0, 0), ' '.join(curr_words), fill=color, font_size=font_size)
-    l, t, r, b = draw.multiline_textbbox((0,0), ' '.join(curr_words), font_size=font_size)
     return img
 
 def create_text_section(section_header, text, canvas_size, header_ratio=0.2):
