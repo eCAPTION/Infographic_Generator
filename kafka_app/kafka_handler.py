@@ -45,8 +45,7 @@ component_label_mapping = {
 
 load_dotenv()
 broker_url = os.environ.get("KAFKA_BROKER_URL")
-port = os.environ.get("GATEWAY_SERVICE_PORT")
-bootstrap_server = os.environ.get("BOOTSTRAP_SERVER")
+port = os.environ.get("INFOGRAPHIC_GENERATION_SERVICE_PORT")
 s3_bucket_name = os.environ.get("S3_BUCKET_NAME")
 infographic_base_url = os.environ.get("INFOGRAPHIC_BASE_URL")
 
@@ -63,7 +62,7 @@ async def handle_infographic_generation(event_stream):
         desc = event.description
         related_articles = event.related_articles
         related_facts = event.related_facts
-        
+
         related_article_str = ''
         for article in related_articles:
             related_article_str += article['title'] + '\n'
@@ -107,19 +106,19 @@ async def handle_infographic_generation(event_stream):
             continue
 
         # stores information relevant to this infographic layout
-        layout_dict = event_to_dict(event) 
+        layout_dict = event_to_dict(event)
         layout_dict['bbox'] = gen_bbox
         layout_dict['label'] = gen_label
         layout_dict['present_sections'] = present_sections
         infographic_img = convert_layout_to_infographic(input_dict, gen_bbox, gen_label, (CANVAS_HEIGHT, CANVAS_WIDTH))
-        
+
         # save image and layout data to stream
         img_bytes = BytesIO()
         infographic_img.save(img_bytes, format='JPEG')
         img_bytes.seek(0)
         json_layout_data = json.dumps(layout_dict)
         json_layout_bytes = BytesIO(json_layout_data.encode('utf-8'))
-        
+
         # upload stream to s3 bucket
         print('Uploading infographic...')
         img_success = upload_fileobj(img_bytes, s3_bucket_name, '{}.jpeg'.format(str(request_id)))
@@ -146,7 +145,7 @@ async def handle_delete_instruction(event_stream):
         infographic_section = event.infographic_section
 
         layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
-        json_file_in_mem = BytesIO() 
+        json_file_in_mem = BytesIO()
 
         # do the infographic generation here to obtain img url
         download_fileobj(s3_bucket_name, layout_object_name, json_file_in_mem)
@@ -154,7 +153,7 @@ async def handle_delete_instruction(event_stream):
 
         downloaded_json_data = json_file_in_mem.read()
         layout_dict = json.loads(downloaded_json_data)
-        label = layout_dict['label'] 
+        label = layout_dict['label']
         present_sections = layout_dict['present_sections']
 
         # remove infographic section from present sections
@@ -246,16 +245,16 @@ async def handle_delete_instruction(event_stream):
         event = Event(new_infographic_link=url, request_id=str(request_id))
         await topics[topic].send(value=event)
 
-        
+
 @app.agent(topics[Topic.ADD_INSTRUCTION])
 async def handle_add_instruction(event_stream):
     async for event in event_stream:
         request_id = event.request_id
         infographic_link = event.infographic_link
         target_element = event.target_element
-        
+
         layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
-        json_file_in_mem = BytesIO() 
+        json_file_in_mem = BytesIO()
 
         # do the infographic generation here to obtain img url
 
@@ -266,7 +265,7 @@ async def handle_add_instruction(event_stream):
         downloaded_json_data = json_file_in_mem.read()
         layout_dict = json.loads(downloaded_json_data)
         present_sections = layout_dict['present_sections']
-        
+
         # check if target element already exists
         if target_element in present_sections:
             await handle_error(
@@ -279,7 +278,7 @@ async def handle_add_instruction(event_stream):
             if list(component_label_mapping.keys()).index(present_sections[i]) > list(component_label_mapping.keys()).index(target_element):
                 break
         present_sections = present_sections[:i] + [target_element] + present_sections[i:]
-        
+
 
         # get updated input_dict
         texts, imgs, graphs = [], [], []
@@ -307,7 +306,6 @@ async def handle_add_instruction(event_stream):
                 graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
-        
         # update label after adding target element
         label = []
         for k in component_label_mapping.keys():
@@ -356,7 +354,7 @@ async def handle_add_instruction(event_stream):
         Event = get_event_type(topic)
         event = Event(new_infographic_link=url, request_id=str(request_id))
         await topics[topic].send(value=event)
-    
+
 @app.agent(topics[Topic.MOVE_INSTRUCTION])
 async def handle_move_instruction(event_stream):
     async for event in event_stream:
@@ -367,7 +365,7 @@ async def handle_move_instruction(event_stream):
         direction = event.direction
 
         layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
-        json_file_in_mem = BytesIO() 
+        json_file_in_mem = BytesIO()
 
         # metadata of existing url
         download_fileobj(s3_bucket_name, layout_object_name, json_file_in_mem)

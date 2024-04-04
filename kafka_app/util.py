@@ -20,7 +20,7 @@ component_label_mapping = {
     'related_facts': 0,
     'knowledge_graph': 3,
     'image': 4,
-    
+
 }
 
 def convert_xywh_to_ltrb(bbox):
@@ -54,6 +54,7 @@ def convert_graph_to_image(adj_list, node_occurrences, entity_labels, property_l
         DG.add_node(n)
     # add edges
     edge_labels = {}
+
     for n in adj_list:
         for nbr in adj_list[n]:
             dest_node, label_id = nbr
@@ -129,7 +130,7 @@ def draw_text_on_canvas(text, color, background_color, canvas_size):
         size = None
         curr_words = []
         idx = 0 # index of current word to select
-        
+
         while idx < len(words):
             curr_words.append(words[idx])
             idx += 1
@@ -143,7 +144,7 @@ def draw_text_on_canvas(text, color, background_color, canvas_size):
                     break
 
                 curr_words.pop()
-                
+
                 idx -= 1
                 curr_words.append('\n')
 
@@ -173,7 +174,7 @@ def create_title_section(text, canvas_size):
     return draw_text_on_canvas(text, '#ffffff', '#1e65ff', canvas_size)
 
 
-def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_ratio=0.15): 
+def convert_layout_to_infographic(input_dict, boxes, labels, canvas_size, title_ratio=0.15):
     '''
     the input is a dict[label_index: [values of each label element]]
     present_sections is a list of string describing the sections present
