@@ -64,12 +64,16 @@ async def handle_infographic_generation(event_stream):
         related_facts = event.related_facts
 
         related_article_str = ''
-        for article in related_articles[:5]: # restrict to 5
-            related_article_str += article['title'] + '\n'
+        for i in range(len(related_articles[:5])): # restrict to 5
+            related_article_str += related_articles[:5][i]['title'] + ' (Similarity: {})'.format(related_articles[:5][i]['similarity'])
+            if i < len(related_articles[:5]) - 1:
+                related_article_str += ', '
 
         related_fact_str = ''
-        for fact in related_facts[:5]: # restrict to 5
-            related_fact_str += fact + '\n'
+        for i in range(len(related_facts[:5])): # restrict to 5
+            related_fact_str += related_facts[:5][i]
+            if i < len(related_facts[:5]) - 1:
+                related_fact_str += ', '
         texts = [('title', title), ('description', desc)]
         if len(related_articles) > 0:
             texts.append(('related_articles', related_article_str))
@@ -108,7 +112,16 @@ async def handle_infographic_generation(event_stream):
                 error_message='Error while access infographic generation API: ' + str(e)
             )
             continue
-
+        # assign largest bbox to knowledge graph
+        graph_idx = gen_label.index(3)
+        largest_area, largest_area_idx = 0, None
+        for i in range(len(gen_label)):
+            area = gen_bbox[i][2] * gen_bbox[i][3]
+            if (gen_label[i] == 3 or gen_label[i] == 4) and area > largest_area:
+                largest_area = area
+                largest_area_idx = i
+        gen_bbox[graph_idx], gen_bbox[largest_area_idx] = gen_bbox[largest_area_idx], gen_bbox[graph_idx]
+        print(gen_label, gen_bbox)
         # stores information relevant to this infographic layout
         layout_dict = event_to_dict(event)
         layout_dict['bbox'] = gen_bbox
@@ -202,7 +215,6 @@ async def handle_delete_instruction(event_stream):
                 graph_im = convert_graph_to_image(adj_list, node_occurrences, entity_labels) # im is a Pillow Image object
                 graphs.append(('knowledge_graph', graph_im))
         input_dict = {0: texts, 4: imgs, 3: graphs}
-        print(related_fact_str)
         # update label after removing section
         label = []
         for k in component_label_mapping.keys():
