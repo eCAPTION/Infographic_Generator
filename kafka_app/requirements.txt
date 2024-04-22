@@ -13,7 +13,7 @@ colorlog==6.8.2
 contourpy==1.2.0
 croniter==2.0.2
 cycler==0.12.1
-git+https://github.com/eCAPTION/ecaption_utils.git#egg=ecaption_utils
+https://github.com/eCAPTION/ecaption_utils/archive/refs/heads/main.zip
 faust==1.10.4
 fonttools==4.49.0
 frozenlist==1.4.1

@@ -1,13 +1,8 @@
 FROM pytorch/pytorch:1.8.1-cuda11.1-cudnn8-runtime
 
-
-# install git
-RUN apt-get -qq -y update && \
-    apt-get -qq -y upgrade && \
-    apt-get install -y git wget
-
-RUN git clone https://github.com/zhuoyang125/const_layout.git 
-WORKDIR ./const_layout/
+RUN mkdir -p /const_layout
+WORKDIR /const_layout
+COPY . .
 
 # install dependencies
 RUN python3 -m pip install torch-scatter==2.0.7 -f https://data.pyg.org/whl/torch-1.8.1+cu111.html
