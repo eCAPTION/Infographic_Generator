@@ -43,6 +43,13 @@ component_label_mapping = {
     'image': 4
 }
 
+chatbot_to_generator_mapping = {
+    'Header': 'title',
+    'Similar Articles': 'related_articles',
+    'Related Facts': 'related_facts',
+    'Knowledge Graph Summaries': 'knowledge_graph'
+}
+
 load_dotenv()
 broker_url = os.environ.get("KAFKA_BROKER_URL")
 port = os.environ.get("INFOGRAPHIC_GENERATION_SERVICE_PORT")
@@ -159,7 +166,7 @@ async def handle_delete_instruction(event_stream):
     async for event in event_stream:
         request_id = event.request_id
         infographic_link = event.infographic_link
-        infographic_section = event.infographic_section
+        infographic_section = chatbot_to_generator_mapping[event.infographic_section]
 
         layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
         json_file_in_mem = BytesIO()
@@ -271,7 +278,7 @@ async def handle_add_instruction(event_stream):
     async for event in event_stream:
         request_id = event.request_id
         infographic_link = event.infographic_link
-        target_element = event.target_element
+        target_element = chatbot_to_generator_mapping[event.target_element]
 
         layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'
         json_file_in_mem = BytesIO()
@@ -385,8 +392,8 @@ async def handle_move_instruction(event_stream):
     async for event in event_stream:
         request_id = event.request_id
         infographic_link = event.infographic_link
-        target_section = event.target_section
-        reference_section = event.reference_section
+        target_section = chatbot_to_generator_mapping[event.target_section]
+        reference_section = chatbot_to_generator_mapping[event.reference_section]
         direction = event.direction
 
         layout_object_name = (infographic_link.rsplit('/', 1)[1]).split('.')[0] + '.json'

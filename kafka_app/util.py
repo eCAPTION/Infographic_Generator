@@ -110,7 +110,6 @@ def get_edit_from_api(id_a, id_b, relation, bbox, num_label, label):
     headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
     res = requests.post(url=generation_endpoint + '/edit', data=json.dumps({'id_a': id_a, 'id_b': id_b, 'relation': relation, 'bbox': bbox, 'num_label': num_label, 'label': label}), headers=headers, timeout=100)
     bboxes, labels = res.json()['results']['bbox'], res.json()['results']['label']
-    print(bboxes, labels)
     return bboxes, labels
 
 def draw_text_on_canvas(text, color, background_color, canvas_size):
