@@ -1,3 +1,8 @@
+# Infographic Generator
+Refer to `kafka_app/` for infographic generation and kafka handling, where layouts are fetched from an API.
+
+The rest of the repo contains code for the training and deployment of LayoutGAN++. Deployment is performed using FastAPI with Heroku inside a Docker container. Refer to below for LayoutGAN++ training and testing, credits to Kikuchi et. al (2021). CLG-LO constraints are stored in `clg/const.py` 
+
 # [MM'21] Constrained Graphic Layout Generation via Latent Optimization
 
 This repository provides the official code for the paper "Constrained Graphic Layout Generation via Latent Optimization", especially the code for:
