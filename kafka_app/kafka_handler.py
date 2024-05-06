@@ -158,7 +158,7 @@ async def handle_infographic_generation(event_stream):
         url = infographic_base_url + '/{}.jpeg'.format(str(request_id))
         topic = Topic.NEW_INFOGRAPHIC
         Event = get_event_type(topic)
-        event = Event(infographic_link=url, request_id=str(request_id))
+        event = Event(infographic_link=url, request_id=request_id)
         await topics[topic].send(value=event)
 
 @app.agent(topics[Topic.DELETE_INSTRUCTION])
@@ -446,7 +446,7 @@ async def handle_move_instruction(event_stream):
                 error_type=FaustApplication.InfographicGeneration,
                 error_message='Target element already exists'
             )
-        target_id = present_sections.index(target_section) 
+        target_id = present_sections.index(target_section)
         reference_id = present_sections.index(reference_section)
 
         # get edited layout

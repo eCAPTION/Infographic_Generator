@@ -12,6 +12,8 @@ import numpy as np
 
 load_dotenv()
 generation_endpoint = os.environ.get("GENERATION_ENDPOINT")
+aws_access_key_id = os.environ.get("AWS_S3_ACCESS_KEY")
+aws_secret_access_key = os.environ.get("AWS_S3_SECRET_KEY")
 
 component_label_mapping = {
     'title': 0,
@@ -225,7 +227,11 @@ def upload_fileobj(file_object, bucket, object_name):
     """
 
     # Upload the file
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+    )
     try:
         response = s3_client.upload_fileobj(file_object, bucket, object_name)
     except ClientError as e:
@@ -242,7 +248,11 @@ def download_fileobj(bucket, object_name, file_object):
     :param object_name S3 object name
     :return True if file was succesfully downloaded, else False
     """
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+    )
     try:
         response = s3_client.download_fileobj(bucket, object_name, file_object)
     except ClientError as e:
